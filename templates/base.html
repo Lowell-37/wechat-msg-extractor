@@ -1,0 +1,33 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信聊天提取工具</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>微信聊天提取工具</h1>
+            <nav id="steps">
+                <span class="step {% if step == 1 %}active{% endif %}">1. 连接鉴权</span>
+                <span class="step-divider">→</span>
+                <span class="step {% if step == 2 %}active{% endif %}">2. 选择群聊</span>
+                <span class="step-divider">→</span>
+                <span class="step {% if step == 3 %}active{% endif %}">3. 预览导出</span>
+            </nav>
+        </header>
+        <main id="main-content">
+            {% block content %}{% endblock %}
+        </main>
+        <footer>
+            <p>数据仅存储在本地，不上传任何信息</p>
+        </footer>
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!-- templates/step1_connect.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="card" id="step1-card">
+    <h2>步骤 1：连接与鉴权</h2>
+
+    <div hx-get="/api/wechat/status" hx-trigger="load" hx-swap="outerHTML">
+        <div class="loading">正在检测微信环境...</div>
+    </div>
+
+    <div class="card-section">
+        <h3>自动提取密钥</h3>
+        <button class="btn btn-primary"
+                hx-post="/api/key/extract"
+                hx-target="#key-status"
+                hx-swap="innerHTML">
+            一键提取密钥并解密
+        </button>
+        <div id="key-status"></div>
+    </div>
+
+    <div class="card-section">
+        <h3>手动输入密钥</h3>
+        <form hx-post="/api/key/validate" hx-target="#manual-key-status" hx-swap="innerHTML">
+            <input type="text" name="key" placeholder="输入64位hex密钥" maxlength="64"
+                   class="input-key" pattern="[0-9a-fA-F]{64}">
+            <button type="submit" class="btn btn-secondary">验证并连接</button>
+        </form>
+        <div id="manual-key-status"></div>
+    </div>
+
+    <div id="next-step-area" style="display:none;">
+        <a href="/step/2" class="btn btn-primary">下一步：选择群聊 →</a>
+    </div>
+</div>
+{% endblock %}
