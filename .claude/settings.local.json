@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(git -C \"D:/AI-Agent/wechat-extractor\" status)",
+      "Bash(mkdir -p core tests static templates export/excel export/images export/voice export/video)",
+      "Bash(touch core/__init__.py tests/__init__.py)",
+      "Bash(pip list:*)"
+    ]
+  }
+}
