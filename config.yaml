@@ -1,0 +1,26 @@
+wechat:
+  auto_detect: true
+  data_dir: null
+  version_dir: null
+
+excel:
+  template_path: "D:/assistants/任务安排与情况分析.xlsx"
+  output_dir: "./export/excel"
+
+matching:
+  group_sheet_map: {}
+
+task_parsing:
+  task_msg_pattern: null
+  date_pattern: null
+  task_item_pattern: null
+
+media:
+  save_images: true
+  save_voice: true
+  save_video: true
+  export_dir: "./export"
+
+server:
+  host: "127.0.0.1"
+  port: 8888
