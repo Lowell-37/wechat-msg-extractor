@@ -5,7 +5,7 @@ from typing import Optional, List, Any
 from contextlib import contextmanager
 
 try:
-    from pysqlcipher3 import dbapi2 as sqlcipher
+    from sqlcipher3 import dbapi2 as sqlcipher
     HAS_SQLCIPHER = True
 except ImportError:
     HAS_SQLCIPHER = False
@@ -17,7 +17,7 @@ class DBDecryptor:
     def __init__(self, db_path: str, key: str):
         if not HAS_SQLCIPHER:
             raise ImportError(
-                "pysqlcipher3 未安装。请安装: pip install pysqlcipher3"
+                "sqlcipher3 未安装。请安装: pip install sqlcipher3"
             )
         self.db_path = db_path
         self.key = key
