@@ -12,26 +12,19 @@ class ExcelWriter:
         self.template_path = template_path
         self._wb = openpyxl.load_workbook(template_path)
 
-    def add_task(self, sheet_name: str, task: ParsedTask):
+    def add_task(self, sheet_name: str, task: ParsedTask, analysis: str = ""):
         if sheet_name not in self._wb.sheetnames:
             return
 
         ws = self._wb[sheet_name]
-        target_row = self._find_or_create_date_row(ws, task)
-
-        if target_row:
-            task_text = "\n".join(f"{i+1}、{t}" for i, t in enumerate(task.tasks))
-            ws.cell(row=target_row, column=2).value = task_text
-
-    def _find_or_create_date_row(self, ws, task: ParsedTask) -> int:
-        for row in range(2, ws.max_row + 1):
-            cell_val = ws.cell(row=row, column=1).value
-            if cell_val is not None and int(cell_val) == task.date_excel_serial:
-                return row
-
         new_row = ws.max_row + 1
-        ws.cell(row=new_row, column=1).value = task.date_excel_serial
-        return new_row
+        cell = ws.cell(row=new_row, column=1)
+        cell.value = task.date
+        cell.number_format = 'yyyy/m/d'
+        task_text = "\n".join(f"{i+1}、{t}" for i, t in enumerate(task.tasks))
+        ws.cell(row=new_row, column=2).value = task_text
+        if analysis:
+            ws.cell(row=new_row, column=3).value = analysis
 
     def save(self, output_path: str):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

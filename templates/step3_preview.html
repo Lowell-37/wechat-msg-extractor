@@ -4,8 +4,8 @@
 <div class="card" id="step3-card">
     <h2>步骤 3：预览与导出</h2>
 
-    <div id="preview-content" hx-get="/api/preview/data" hx-trigger="load">
-        <div class="loading">正在解析任务消息...</div>
+    <div id="preview-content">
+        <p>请先在步骤 2 选择群聊和日期范围。</p>
     </div>
 
     <div id="progress-area" style="display:none;">
@@ -15,29 +15,12 @@
         <p id="progress-message"></p>
     </div>
 
+    <div id="export-success"></div>
+
     <div class="btn-group">
-        <a href="/step/2" class="btn btn-secondary">← 返回</a>
-        <button class="btn btn-primary"
-                hx-post="/api/export"
-                hx-target="#export-result"
-                hx-swap="innerHTML">
-            执行导出到 Excel
-        </button>
+        <a href="/step/2" class="btn btn-secondary">← 返回选择</a>
     </div>
 
     <div id="export-result"></div>
 </div>
-
-<script>
-document.body.addEventListener('htmx:sseMessage', function(evt) {
-    var parts = evt.detail.data.split('|');
-    var stage = parts[0];
-    var message = parts[1];
-    var progress = parseInt(parts[2]);
-
-    document.getElementById('progress-area').style.display = 'block';
-    document.getElementById('progress-fill').style.width = progress + '%';
-    document.getElementById('progress-message').textContent = message;
-});
-</script>
 {% endblock %}

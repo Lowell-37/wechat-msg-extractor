@@ -4,7 +4,7 @@ wechat:
   version_dir: null
 
 excel:
-  template_path: "D:/assistants/任务安排与情况分析.xlsx"
+  template_path: "D:/assistants/assignment-analysis.xlsx"
   output_dir: "./export/excel"
 
 matching:

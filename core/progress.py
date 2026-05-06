@@ -29,11 +29,16 @@ class ProgressHub:
             await queue.put(event)
 
     async def event_stream(self, session_id: str) -> AsyncGenerator[str, None]:
-        queue = self.register(session_id)
+        # 如果已有 queue 则复用（预注册场景），否则新建
+        if session_id not in self._listeners:
+            self.register(session_id)
+        queue = self._listeners[session_id]
         try:
             while True:
                 event = await queue.get()
                 yield f"data: {event.stage}|{event.message}|{event.progress}\n\n"
+                if event.stage in ("done", "error"):
+                    break
         except asyncio.CancelledError:
             pass
         finally:

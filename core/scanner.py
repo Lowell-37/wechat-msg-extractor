@@ -17,8 +17,20 @@ class WeChatInfo:
 
 
 class WeChatScanner:
-    _INSTALL_BASE = r"C:\Program Files\Tencent\WeChat"
-    _DATA_BASE = os.path.expandvars(r"%APPDATA%\Tencent\WeChat")
+    _INSTALL_BASES = [
+        r"C:\Program Files\Tencent\WeChat",
+        r"C:\Program Files (x86)\Tencent\WeChat",
+        r"D:\software\WeChat",
+    ]
+    _DATA_BASES = [
+        os.path.expandvars(r"%APPDATA%\Tencent\WeChat"),
+        r"D:\WeChat Store\WeChat Files\WeChat Files",
+        r"D:\WeChat Store\WeChat Files",
+    ]
+
+    def __init__(self, install_path: Optional[str] = None, data_dir: Optional[str] = None):
+        self._custom_install = install_path
+        self._custom_data = data_dir
 
     def scan(self) -> WeChatInfo:
         info = WeChatInfo()
@@ -28,21 +40,35 @@ class WeChatScanner:
         return info
 
     def _detect_install(self, info: WeChatInfo):
-        if not os.path.exists(self._INSTALL_BASE):
-            info.errors.append(f"微信安装目录不存在: {self._INSTALL_BASE}")
-            return
-        try:
-            versions = sorted(
-                [d for d in os.listdir(self._INSTALL_BASE)
-                 if os.path.isdir(os.path.join(self._INSTALL_BASE, d))
-                 and d.startswith("[") and d.endswith("]")],
-                reverse=True,
-            )
-            if versions:
-                info.version = versions[0].strip("[]")
-                info.install_path = os.path.join(self._INSTALL_BASE, versions[0])
-        except Exception as e:
-            info.errors.append(f"读取安装目录失败: {e}")
+        paths = [self._custom_install] if self._custom_install else []
+        if not self._custom_install:
+            paths = self._INSTALL_BASES
+
+        for base in paths:
+            if not base or not os.path.exists(base):
+                continue
+            try:
+                versions = sorted(
+                    [d for d in os.listdir(base)
+                     if os.path.isdir(os.path.join(base, d))
+                     and d.startswith("[") and d.endswith("]")],
+                    reverse=True,
+                )
+                if versions:
+                    info.version = versions[0].strip("[]")
+                    info.install_path = os.path.join(base, versions[0])
+                    return
+                # also check if base itself is the versioned dir
+                name = os.path.basename(base)
+                if name.startswith("[") and name.endswith("]"):
+                    info.version = name.strip("[]")
+                    info.install_path = base
+                    return
+            except Exception as e:
+                info.errors.append(f"读取安装目录失败: {e}")
+
+        base = self._custom_install or self._INSTALL_BASES[0]
+        info.errors.append(f"微信安装目录不存在: {base}")
 
     def _detect_process(self, info: WeChatInfo):
         try:
@@ -61,21 +87,30 @@ class WeChatScanner:
             info.errors.append(f"查找微信进程失败: {e}")
 
     def _detect_data_dir(self, info: WeChatInfo):
-        if not os.path.exists(self._DATA_BASE):
-            info.errors.append(f"微信数据目录不存在: {self._DATA_BASE}")
-            return
-        try:
-            for entry in os.listdir(self._DATA_BASE):
-                full_path = os.path.join(self._DATA_BASE, entry)
-                if os.path.isdir(full_path):
-                    db_files = glob.glob(os.path.join(full_path, "MSG*.db"))
+        paths = [self._custom_data] if self._custom_data else []
+        if not self._custom_data:
+            paths = self._DATA_BASES
+
+        for base in paths:
+            if not base or not os.path.exists(base):
+                continue
+            try:
+                for root, dirs, files in os.walk(base):
+                    # Look for MSG*.db anywhere in subtree
+                    db_files = sorted(f for f in files if f.startswith("MSG") and f.endswith(".db"))
                     if db_files:
-                        info.data_dir = full_path
-                        info.db_files = [os.path.basename(f) for f in db_files]
+                        # If found in Msg\Multi, prefer the parent Msg dir
+                        parent_dir = os.path.dirname(root)
+                        if os.path.basename(root) == "Multi" and os.path.isdir(parent_dir):
+                            info.data_dir = parent_dir
+                            # Copy MSG*.db paths to parent level info
+                            info.db_files = [os.path.join("Multi", f) for f in db_files]
+                        else:
+                            info.data_dir = root
+                            info.db_files = db_files
                         return
-            subdirs = [d for d in os.listdir(self._DATA_BASE)
-                       if os.path.isdir(os.path.join(self._DATA_BASE, d))]
-            if subdirs:
-                info.data_dir = os.path.join(self._DATA_BASE, subdirs[0])
-        except Exception as e:
-            info.errors.append(f"读取数据目录失败: {e}")
+            except Exception as e:
+                info.errors.append(f"读取数据目录失败: {e}")
+
+        base = self._custom_data or self._DATA_BASES[0]
+        info.errors.append(f"微信数据目录不存在: {base}")
