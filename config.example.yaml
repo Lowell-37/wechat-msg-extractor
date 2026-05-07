@@ -27,7 +27,7 @@ server:
 
 ai:
   provider: "deepseek"
-  api_key: "sk-e9407973c84d4b25adaae83d2616862d"
+  api_key: ""
   api_base: "https://api.deepseek.com"
   model: "deepseek-chat"
   enabled: true
