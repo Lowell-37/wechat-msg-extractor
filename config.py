@@ -44,6 +44,24 @@ class ServerConfig:
 
 
 @dataclass
+class AIConfig:
+    provider: str = "deepseek"
+    api_key: str = ""
+    api_base: str = "https://api.deepseek.com"
+    model: str = "deepseek-chat"
+    enabled: bool = True
+
+
+@dataclass
+class VoiceConfig:
+    enabled: bool = False
+    transcriber: str = "openai"
+    api_key: str = ""
+    api_base: str = "https://api.openai.com"
+    model: str = "whisper-1"
+
+
+@dataclass
 class AppConfig:
     wechat: WeChatConfig = field(default_factory=WeChatConfig)
     excel: ExcelConfig = field(default_factory=ExcelConfig)
@@ -51,6 +69,8 @@ class AppConfig:
     task_parsing: TaskParsingConfig = field(default_factory=TaskParsingConfig)
     media: MediaConfig = field(default_factory=MediaConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
+    ai: AIConfig = field(default_factory=AIConfig)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
 
     @classmethod
     def from_yaml(cls, path: str = "config.yaml") -> "AppConfig":
@@ -67,4 +87,6 @@ class AppConfig:
             task_parsing=TaskParsingConfig(**data.get("task_parsing", {})),
             media=MediaConfig(**data.get("media", {})),
             server=ServerConfig(**data.get("server", {})),
+            ai=AIConfig(**data.get("ai", {})),
+            voice=VoiceConfig(**data.get("voice", {})),
         )

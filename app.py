@@ -10,12 +10,15 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 from config import AppConfig
+from core.ai_analyzer import create_analyzer
 from core.dbutils import WeChatDB, DecryptedDB, MergedMsgDB
 from core.scanner import WeChatScanner
 from core.task_parser import TaskParser, ParsedTask
 from core.matcher import SheetMatcher
 from core.excel_writer import ExcelWriter
 from core.progress import progress_hub, ProgressEvent
+from core.voice import VoiceTranscriber
+import asyncio
 
 # --- App Setup ---
 BASE_DIR = Path(__file__).parent
@@ -463,19 +466,71 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
 
     async def export_with_progress():
         try:
-            await progress_hub.emit(session_id, ProgressEvent(stage="start", message="开始写入 Excel...", progress=0))
-            writer = ExcelWriter(excel_path)
-            await progress_hub.emit(session_id, ProgressEvent(stage="write", message="正在写入任务数据...", progress=30))
             analysis_by_date = state.get("analysis_by_date", {})
-            for pt in parsed_tasks:
-                analysis = "\n".join(analysis_by_date.get(pt.date.isoformat(), []))
+            total = len(parsed_tasks)
+
+            # ── 语音转写 ──────────────────────────────
+            if config.voice.enabled and config.voice.api_key:
+                await progress_hub.emit(session_id, ProgressEvent(
+                    stage="voice", message="正在转写语音消息...", progress=5
+                ))
+                try:
+                    vc = VoiceTranscriber(state["ddb"], config.voice)
+                    start_ts = int(datetime(
+                        s_date.year, s_date.month, s_date.day
+                    ).timestamp())
+                    end_ts = int(datetime(
+                        e_date.year, e_date.month, e_date.day, 23, 59, 59
+                    ).timestamp())
+                    voice_texts = await vc.transcribe_all(
+                        state["selected_group"], start_ts, end_ts
+                    )
+                    for d, texts in voice_texts.items():
+                        analysis_by_date.setdefault(d, []).extend(texts)
+                except Exception as e:
+                    pass  # 语音转写失败不阻断导出
+
+            # ── AI 分析器初始化 ──────────────────────
+            analyzer = None
+            if config.ai.enabled and config.ai.api_key:
+                analyzer = create_analyzer(config.ai)
+
+            # ── 写入 Excel ──────────────────────────
+            await progress_hub.emit(session_id, ProgressEvent(
+                stage="write", message="正在写入任务数据...", progress=10
+            ))
+            writer = ExcelWriter(excel_path)
+
+            for i, pt in enumerate(parsed_tasks):
+                date_key = pt.date.isoformat()
+                context = analysis_by_date.get(date_key, [])
+
+                if analyzer:
+                    pct = 10 + int(70 * (i + 1) / total)
+                    await progress_hub.emit(session_id, ProgressEvent(
+                        stage="ai", message=f"AI分析中 ({i+1}/{total}): {date_key}",
+                        progress=pct,
+                    ))
+                    analysis = await analyzer.analyze(pt.tasks, context, date_key)
+                else:
+                    analysis = "\n".join(context) if context else ""
+
                 writer.add_task(sheet_name, pt, analysis)
-            await progress_hub.emit(session_id, ProgressEvent(stage="save", message="正在保存文件...", progress=80))
+
+            await progress_hub.emit(session_id, ProgressEvent(
+                stage="save", message="正在保存文件...", progress=85
+            ))
             writer.save(output_path)
             writer.close()
-            await progress_hub.emit(session_id, ProgressEvent(stage="done", message=f"导出完成！文件保存在：{output_path}", progress=100))
+            await progress_hub.emit(session_id, ProgressEvent(
+                stage="done",
+                message=f"导出完成！文件保存在：{output_path}",
+                progress=100,
+            ))
         except Exception as e:
-            await progress_hub.emit(session_id, ProgressEvent(stage="error", message=f"导出失败：{e}", progress=0))
+            await progress_hub.emit(session_id, ProgressEvent(
+                stage="error", message=f"导出失败：{e}", progress=0
+            ))
 
     import asyncio
     # 预注册 SSE listener，防止时序问题

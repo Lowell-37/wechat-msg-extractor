@@ -24,3 +24,17 @@ media:
 server:
   host: "127.0.0.1"
   port: 8888
+
+ai:
+  provider: "deepseek"
+  api_key: "sk-e9407973c84d4b25adaae83d2616862d"
+  api_base: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  enabled: true
+
+voice:
+  enabled: false
+  transcriber: "openai"
+  api_key: ""
+  api_base: "https://api.openai.com"
+  model: "whisper-1"
