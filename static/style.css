@@ -155,6 +155,15 @@ header h1 {
     color: var(--text-secondary);
 }
 
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 200ms;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
 .chatroom-item {
     display: flex;
     align-items: center;

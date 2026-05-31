@@ -283,22 +283,23 @@ async def list_chatrooms(request: Request):
     items = []
     for cid, display_name in chatrooms:
         matched = matches.get(display_name)
-        cls = "matched" if matched else "unmatched"
-        txt = matched or "未匹配"
+        if not matched:  # 只显示匹配到 sheet 的群聊
+            continue
         items.append(
             f'<div class="chatroom-item" onclick="select(this)"'
-            f' data-group="{cid}" data-sheet="{matched or ""}">'
+            f' data-group="{cid}" data-sheet="{matched}">'
             f'<span class="chatroom-name">{display_name}</span>'
-            f'<span class="chatroom-sheet {cls}">{txt}</span>'
+            f'<span class="chatroom-sheet matched">{matched}</span>'
             f'</div>'
         )
 
+    if not items:
+        return HTMLResponse('<p class="status-warn">没有匹配到 Sheet 的群聊，请在 config.yaml 中配置 group_sheet_map</p>')
+
     html = "".join(items)
-    html += '<form hx-post="/api/preview" hx-target="#main-content" hx-swap="outerHTML" id="select-form">'
+    html += '<form hx-post="/api/preview" hx-target="#main-content" hx-swap="outerHTML" hx-include="#step2-card input[name=start_date],#step2-card input[name=end_date]" id="select-form">'
     html += '<input type="hidden" name="group_name" id="selected-group">'
     html += '<input type="hidden" name="sheet_name" id="selected-sheet">'
-    html += '<input type="hidden" name="start_date" id="selected-start">'
-    html += '<input type="hidden" name="end_date" id="selected-end">'
     html += '</form>'
     html += '<script>'
     html += 'function select(el) {'
@@ -306,9 +307,6 @@ async def list_chatrooms(request: Request):
     html += '  el.classList.add("selected");'
     html += '  document.getElementById("selected-group").value = el.dataset.group;'
     html += '  document.getElementById("selected-sheet").value = el.dataset.sheet;'
-    html += '  document.getElementById("selected-start").value = document.querySelector("[name=start_date]").value;'
-    html += '  document.getElementById("selected-end").value = document.querySelector("[name=end_date]").value;'
-    html += '  document.getElementById("select-form").requestSubmit();'
     html += '}'
     html += '</script>'
     return HTMLResponse(html)
@@ -343,12 +341,13 @@ async def search_chatrooms(request: Request, query: str = ""):
     items = []
     for cid, display_name in matched:
         s = mm.get(display_name)
+        if not s:  # 只显示匹配到 sheet 的群聊
+            continue
         items.append(
             f'<div class="chatroom-item" onclick="select(this)"'
-            f' data-group="{cid}" data-sheet="{s or ""}">'
+            f' data-group="{cid}" data-sheet="{s}">'
             f'<span class="chatroom-name">{display_name}</span>'
-            f'<span class="chatroom-sheet {"matched" if s else "unmatched"}">'
-            f'{("→ " + s) if s else "未匹配"}</span></div>'
+            f'<span class="chatroom-sheet matched">→ {s}</span></div>'
         )
     return HTMLResponse("".join(items) or '<p>无匹配群聊</p>')
 
@@ -356,10 +355,10 @@ async def search_chatrooms(request: Request, query: str = ""):
 @app.post("/api/preview")
 async def preview(
     request: Request,
-    group_name: str = Form(...),
+    group_name: str = Form(""),
     sheet_name: str = Form(""),
-    start_date: str = Form(...),
-    end_date: str = Form(...),
+    start_date: str = Form(""),
+    end_date: str = Form(""),
 ):
     _, state = get_session(request)
     state["selected_group"] = group_name
@@ -367,9 +366,15 @@ async def preview(
     state["start_date"] = start_date
     state["end_date"] = end_date
 
+    if not group_name:
+        return HTMLResponse('<p class="status-err">请先选择一个群聊</p>')
+
     ddb = state.get("ddb")
     if not ddb:
         return HTMLResponse('<p class="status-err">请先完成鉴权</p>')
+
+    if not start_date or not end_date:
+        return HTMLResponse('<p class="status-err">请设置时间范围</p>')
 
     s_date = date.fromisoformat(start_date)
     e_date = date.fromisoformat(end_date)

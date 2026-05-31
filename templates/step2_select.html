@@ -27,12 +27,23 @@
 
     <div class="btn-group">
         <a href="/" class="btn btn-secondary">← 返回</a>
-        <button class="btn btn-primary"
-                hx-post="/api/preview"
-                hx-target="#main-content"
-                hx-swap="outerHTML">
+        <button class="btn btn-primary" id="preview-btn"
+                onclick="submitPreview()">
             预览导出内容 →
         </button>
+        <span id="preview-loading" class="htmx-indicator loading">加载中...</span>
     </div>
+    <script>
+    function submitPreview() {
+        var group = document.getElementById('selected-group');
+        if (!group || !group.value) {
+            alert('请先点击选择一个群聊');
+            return;
+        }
+        document.getElementById('preview-loading').style.display = 'block';
+        var form = document.getElementById('select-form');
+        form.requestSubmit();
+    }
+    </script>
 </div>
 {% endblock %}
