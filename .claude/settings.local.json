@@ -7,7 +7,9 @@
       "Bash(git -C \"D:/AI-Agent/wechat-msg-extractor\" status)",
       "Bash(mkdir -p core tests static templates export/excel export/images export/voice export/video)",
       "Bash(touch core/__init__.py tests/__init__.py)",
-      "Bash(pip list:*)"
+      "Bash(pip list:*)",
+      "Bash(curl -s http://127.0.0.1:8888/)",
+      "Bash(git:*)"
     ]
   }
 }
