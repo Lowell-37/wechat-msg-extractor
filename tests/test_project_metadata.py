@@ -9,5 +9,6 @@ def test_runtime_and_test_dependencies_are_declared():
 
     assert "pycryptodomex" in runtime
     assert "pywxdump" in runtime
+    assert "sqlcipher3" in runtime
     assert "pytest" in dev
     assert "ruff" in dev
