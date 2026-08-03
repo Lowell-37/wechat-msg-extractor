@@ -21,10 +21,11 @@
 
 ```bash
 # 安装依赖
-pip install -r requirements.txt
+py -m pip install -e ".[dev]"
+py -m pytest -q
 
 # 启动服务
-python app.py
+py app.py
 ```
 
 打开浏览器访问 `http://127.0.0.1:8888`
