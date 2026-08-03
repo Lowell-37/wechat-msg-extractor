@@ -20,15 +20,24 @@
 ## 快速开始
 
 ```bash
-# 安装依赖
-py -m pip install -e ".[dev]"
-py -m pytest -q
+# Create and activate a virtual environment (Windows PowerShell)
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
 
-# 启动服务
+# Install the application and development tools
+py -m pip install -e ".[dev]"
+
+# Run the quality gate
+py -m pytest -q
+py -m ruff check .
+
+# Start the local server
 py app.py
 ```
 
-打开浏览器访问 `http://127.0.0.1:8888`
+Supported Python versions are `>=3.11,<3.14` (CI uses Python 3.13). The default
+server address is local-only: `http://127.0.0.1:8888`; it does not expose the
+application to the network.
 
 ## 配置
 
