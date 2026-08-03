@@ -216,6 +216,12 @@ def _store_connection(request: Request, key: str | None, success_message: str) -
         connected = connect_wechat(key)
 
         session_id, state = get_session(request)
+        previous_database = state.get("ddb")
+        if previous_database is not None and previous_database is not connected.database:
+            try:
+                previous_database.close_all()
+            except Exception:
+                pass
         state["wdb"] = connected.manager
         state["ddb"] = connected.database
 

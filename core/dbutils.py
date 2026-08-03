@@ -207,28 +207,51 @@ class WeChatDB:
             return []
 
         dbs = []
-        for db_path in candidates:
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
-            os.close(temp_fd)
-
-            try:
-                success = decrypt_db_raw(self._key, db_path, temp_path)
-                if not success:
-                    os.unlink(temp_path)
-                    continue
-                conn = sqlite3.connect(temp_path)
-                conn.row_factory = sqlite3.Row
-                dbs.append(DecryptedDB(
-                    original_path=db_path,
-                    key_hex=self._key,
-                    temp_path=temp_path,
-                    conn=conn,
-                ))
-            except Exception:
+        try:
+            for db_path in candidates:
+                temp_fd = None
+                temp_path = None
+                conn = None
                 try:
-                    os.unlink(temp_path)
+                    temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
+                    os.close(temp_fd)
+                    temp_fd = None
+                    success = decrypt_db_raw(self._key, db_path, temp_path)
+                    if not success:
+                        os.unlink(temp_path)
+                        continue
+                    conn = sqlite3.connect(temp_path)
+                    conn.row_factory = sqlite3.Row
+                    dbs.append(DecryptedDB(
+                        original_path=db_path,
+                        key_hex=self._key,
+                        temp_path=temp_path,
+                        conn=conn,
+                    ))
+                except Exception:
+                    if temp_fd is not None:
+                        try:
+                            os.close(temp_fd)
+                        except Exception:
+                            pass
+                    if conn is not None:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                    try:
+                        if temp_path:
+                            os.unlink(temp_path)
+                    except Exception:
+                        pass
+                    raise
+        except Exception:
+            for db in dbs:
+                try:
+                    db.close()
                 except Exception:
                     pass
+            raise
 
         return dbs
 
