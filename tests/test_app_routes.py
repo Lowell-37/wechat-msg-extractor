@@ -1,6 +1,124 @@
+import asyncio
+from datetime import date, datetime
+
+import pytest
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 import app as app_module
+from core.task_parser import ParsedTask
+
+
+@pytest.fixture(autouse=True)
+def reset_in_memory_state():
+    app_module.session_state.clear()
+    app_module.progress_hub._listeners.clear()
+    yield
+    app_module.session_state.clear()
+    app_module.progress_hub._listeners.clear()
+
+
+@pytest.fixture
+def client_with_database(monkeypatch, tmp_path):
+    template_path = tmp_path / "template.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "张三"
+    workbook.save(template_path)
+    workbook.close()
+
+    monkeypatch.setattr(app_module.config.excel, "template_path", str(template_path))
+    monkeypatch.setattr(app_module.config.excel, "output_dir", str(tmp_path / "exports"))
+    monkeypatch.setattr(app_module.config.ai, "enabled", False)
+
+    client = TestClient(app_module.app)
+    client.get("/")
+    session_id = client.cookies["session_id"]
+    app_module.session_state[session_id]["ddb"] = object()
+    return client
+
+
+@pytest.fixture
+def client_with_preview(client_with_database):
+    session_id = client_with_database.cookies["session_id"]
+    state = app_module.session_state[session_id]
+    state.update(
+        selected_group="group@chatroom",
+        selected_sheet="张三",
+        start_date="2026-08-01",
+        end_date="2026-08-03",
+        parsed_tasks=[
+            ParsedTask(
+                msg_id=1,
+                date=date(2026, 8, 2),
+                date_excel_serial=46236,
+                raw_text="任务",
+                tasks=["测试任务"],
+            )
+        ],
+        analysis_by_date={},
+    )
+    return client_with_database
+
+
+def test_preview_rejects_reverse_date_range_before_mutating_session(client_with_database):
+    session_id = client_with_database.cookies["session_id"]
+    state = app_module.session_state[session_id]
+    state.update(
+        selected_group="existing@chatroom",
+        selected_sheet="existing-sheet",
+        start_date="2026-07-01",
+        end_date="2026-07-02",
+    )
+
+    response = client_with_database.post(
+        "/api/preview",
+        data={
+            "group_name": "group@chatroom",
+            "sheet_name": "张三",
+            "start_date": "2026-08-03",
+            "end_date": "2026-08-01",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "开始日期不能晚于结束日期" in response.text
+    assert state["selected_group"] == "existing@chatroom"
+    assert state["selected_sheet"] == "existing-sheet"
+    assert state["start_date"] == "2026-07-01"
+    assert state["end_date"] == "2026-07-02"
+
+
+def test_export_builds_voice_range_from_validated_session_dates(
+    monkeypatch, client_with_preview
+):
+    captured = {}
+    scheduled = []
+
+    class FakeVoice:
+        def __init__(self, database, config):
+            pass
+
+        async def transcribe_all(self, group, start_ts, end_ts):
+            captured.update(group=group, start_ts=start_ts, end_ts=end_ts)
+            return {}
+
+    monkeypatch.setattr(app_module, "VoiceTranscriber", FakeVoice)
+    monkeypatch.setattr(app_module.config.voice, "enabled", True)
+    monkeypatch.setattr(app_module.config.voice, "api_key", "test-key")
+    monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "result.xlsx"}
+    )
+
+    assert response.status_code == 200
+    assert len(scheduled) == 1
+    asyncio.run(scheduled[0])
+    assert captured == {
+        "group": "group@chatroom",
+        "start_ts": int(datetime(2026, 8, 1).timestamp()),
+        "end_ts": int(datetime(2026, 8, 3, 23, 59, 59).timestamp()),
+    }
 
 
 def test_manual_key_route_stores_connection(monkeypatch):

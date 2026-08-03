@@ -1,4 +1,6 @@
 # app.py
+import asyncio
+import logging
 import uuid
 from html import escape
 from datetime import date, datetime, timedelta
@@ -20,7 +22,12 @@ from core.matcher import SheetMatcher
 from core.excel_writer import ExcelWriter
 from core.progress import progress_hub, ProgressEvent
 from core.voice import VoiceTranscriber
-import asyncio
+from core.validation import (
+    ValidationError,
+    parse_date_range,
+    resolve_output_path,
+    validate_sheet_name,
+)
 
 # --- App Setup ---
 BASE_DIR = Path(__file__).parent
@@ -31,6 +38,14 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # --- In-memory state (per-session) ---
 session_state: dict = {}
+logger = logging.getLogger(__name__)
+
+
+def _validation_error(message: str) -> HTMLResponse:
+    return HTMLResponse(
+        f'<p class="status-err">{escape(message)}</p>',
+        status_code=400,
+    )
 
 
 def get_session(request: Request):
@@ -358,6 +373,11 @@ async def preview(
     end_date: str = Form(...),
 ):
     _, state = get_session(request)
+    try:
+        start_value, end_value = parse_date_range(start_date, end_date)
+    except ValidationError as exc:
+        return _validation_error(str(exc))
+
     state["selected_group"] = group_name
     state["selected_sheet"] = sheet_name
     state["start_date"] = start_date
@@ -367,11 +387,8 @@ async def preview(
     if not ddb:
         return HTMLResponse('<p class="status-err">请先完成鉴权</p>')
 
-    s_date = date.fromisoformat(start_date)
-    e_date = date.fromisoformat(end_date)
-
     from datetime import datetime
-    messages = _get_messages(ddb, group_name, s_date, e_date, task_only=False)
+    messages = _get_messages(ddb, group_name, start_value, end_value, task_only=False)
 
     parser = TaskParser()
     parsed_tasks = []
@@ -426,7 +443,7 @@ async def preview(
         f"<div class='form-group'>"
         f"<label>导出到文件：</label>"
         f"<input type='text' id='output-path' name='output_path' "
-        f"  value='D:/assistants/assignment-analysis.xlsx' class='input-text' style='width:100%'>"
+        f"  value='任务记录_{date.today().isoformat()}.xlsx' class='input-text' style='width:100%'>"
         f"</div>"
         f"<table class='preview-table'><tr><th>日期</th><th>任务内容</th><th>目标Sheet</th></tr>{rows}</table>"
         f"<div class='btn-group'>"
@@ -448,17 +465,43 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
     sheet_name = sheet_name or state.get("selected_sheet", "")
 
     if not parsed_tasks:
-        return HTMLResponse('<p class="status-err">没有可导出的任务</p>')
+        return _validation_error("没有可导出的任务")
     if not sheet_name:
-        return HTMLResponse('<p class="status-err">未指定目标 Sheet</p>')
+        return _validation_error("未指定目标 Sheet")
+
+    try:
+        start_value, end_value = parse_date_range(
+            state.get("start_date"), state.get("end_date")
+        )
+    except ValidationError as exc:
+        return _validation_error(str(exc))
 
     excel_path = config.excel.template_path
     if not Path(excel_path).exists():
-        return HTMLResponse(f'<p class="status-err">Excel 模板不存在：{excel_path}</p>')
+        return _validation_error(f"Excel 模板不存在：{excel_path}")
 
-    # 若未指定输出路径，用默认
-    if not output_path:
-        output_path = str(Path(config.excel.output_dir) / f"任务记录_{date.today().isoformat()}.xlsx")
+    writer = None
+    try:
+        writer = ExcelWriter(excel_path)
+        sheet_value = validate_sheet_name(sheet_name, writer.get_sheet_names())
+    except ValidationError as exc:
+        return _validation_error(str(exc))
+    except Exception as exc:
+        return _validation_error(f"无法读取 Excel 模板：{exc}")
+    finally:
+        if writer:
+            writer.close()
+
+    try:
+        output_value = str(resolve_output_path(
+            output_path,
+            config.excel.output_dir,
+            f"任务记录_{date.today().isoformat()}.xlsx",
+        ))
+    except ValidationError as exc:
+        return _validation_error(str(exc))
+
+    group_value = state.get("selected_group")
 
     async def export_with_progress():
         try:
@@ -473,18 +516,30 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
                 try:
                     vc = VoiceTranscriber(state["ddb"], config.voice)
                     start_ts = int(datetime(
-                        s_date.year, s_date.month, s_date.day
+                        start_value.year, start_value.month, start_value.day
                     ).timestamp())
                     end_ts = int(datetime(
-                        e_date.year, e_date.month, e_date.day, 23, 59, 59
+                        end_value.year, end_value.month, end_value.day, 23, 59, 59
                     ).timestamp())
                     voice_texts = await vc.transcribe_all(
-                        state["selected_group"], start_ts, end_ts
+                        group_value, start_ts, end_ts
                     )
                     for d, texts in voice_texts.items():
                         analysis_by_date.setdefault(d, []).extend(texts)
-                except Exception as e:
-                    pass  # 语音转写失败不阻断导出
+                except Exception:
+                    logger.warning(
+                        "Voice transcription failed for session %s",
+                        session_id,
+                        exc_info=True,
+                    )
+                    await progress_hub.emit(
+                        session_id,
+                        ProgressEvent(
+                            stage="warning",
+                            message="部分语音转写失败，继续导出文本任务",
+                            progress=8,
+                        ),
+                    )
 
             # ── AI 分析器初始化 ──────────────────────
             analyzer = None
@@ -511,16 +566,16 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
                 else:
                     analysis = "\n".join(context) if context else ""
 
-                writer.add_task(sheet_name, pt, analysis)
+                writer.add_task(sheet_value, pt, analysis)
 
             await progress_hub.emit(session_id, ProgressEvent(
                 stage="save", message="正在保存文件...", progress=85
             ))
-            writer.save(output_path)
+            writer.save(output_value)
             writer.close()
             await progress_hub.emit(session_id, ProgressEvent(
                 stage="done",
-                message=f"导出完成！文件保存在：{output_path}",
+                message=f"导出完成！文件保存在：{output_value}",
                 progress=100,
             ))
         except Exception as e:
