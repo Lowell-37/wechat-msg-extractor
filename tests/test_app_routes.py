@@ -1,5 +1,7 @@
 import asyncio
+import logging
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -119,6 +121,116 @@ def test_export_builds_voice_range_from_validated_session_dates(
         "start_ts": int(datetime(2026, 8, 1).timestamp()),
         "end_ts": int(datetime(2026, 8, 3, 23, 59, 59).timestamp()),
     }
+
+
+def test_export_rejects_invalid_stored_dates_before_scheduling(monkeypatch, client_with_preview):
+    scheduled = []
+    session_id = client_with_preview.cookies["session_id"]
+    app_module.session_state[session_id]["start_date"] = "<not-a-date>"
+    monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "result.xlsx"}
+    )
+
+    assert response.status_code == 400
+    assert "<not-a-date>" not in response.text
+    assert scheduled == []
+
+
+def test_export_rejects_unavailable_sheet_before_scheduling(monkeypatch, client_with_preview):
+    scheduled = []
+    monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "不存在", "output_path": "result.xlsx"}
+    )
+
+    assert response.status_code == 400
+    assert scheduled == []
+
+
+def test_export_rejects_output_outside_configured_directory_before_scheduling(
+    monkeypatch, client_with_preview
+):
+    scheduled = []
+    monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "../outside.xlsx"}
+    )
+
+    assert response.status_code == 400
+    assert scheduled == []
+
+
+def test_export_warns_on_voice_failure_and_continues_text_export(
+    monkeypatch, caplog, client_with_preview
+):
+    events = []
+    scheduled = []
+
+    class FailingVoice:
+        def __init__(self, database, config):
+            pass
+
+        async def transcribe_all(self, group, start_ts, end_ts):
+            raise RuntimeError("voice unavailable")
+
+    async def capture_event(session_id, event):
+        events.append(event)
+
+    monkeypatch.setattr(app_module, "VoiceTranscriber", FailingVoice)
+    monkeypatch.setattr(app_module.config.voice, "enabled", True)
+    monkeypatch.setattr(app_module.config.voice, "api_key", "test-key")
+    monkeypatch.setattr(app_module.progress_hub, "emit", capture_event)
+    monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
+
+    with caplog.at_level(logging.WARNING, logger="app"):
+        response = client_with_preview.post(
+            "/api/export", data={"sheet_name": "张三", "output_path": "voice-failure.xlsx"}
+        )
+        assert response.status_code == 200
+        asyncio.run(scheduled[0])
+
+    assert "Voice transcription failed for session" in caplog.text
+    assert any(event.stage == "warning" and event.progress == 8 for event in events)
+    assert any(event.stage == "done" for event in events)
+    assert (Path(app_module.config.excel.output_dir) / "voice-failure.xlsx").exists()
+
+
+def test_export_closes_worker_workbook_when_task_writing_fails(
+    monkeypatch, client_with_preview
+):
+    scheduled = []
+    writers = []
+
+    class FailingWriter:
+        def __init__(self, template_path):
+            self.closed = False
+            writers.append(self)
+
+        def get_sheet_names(self):
+            return ["张三"]
+
+        def add_task(self, sheet_name, task, analysis):
+            raise RuntimeError("write failed")
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(app_module, "ExcelWriter", FailingWriter)
+    monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "failure.xlsx"}
+    )
+
+    assert response.status_code == 200
+    assert len(writers) == 1
+    asyncio.run(scheduled[0])
+    assert len(writers) == 2
+    assert writers[1].closed is True
 
 
 def test_manual_key_route_stores_connection(monkeypatch):

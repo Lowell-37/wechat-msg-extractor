@@ -387,7 +387,6 @@ async def preview(
     if not ddb:
         return HTMLResponse('<p class="status-err">请先完成鉴权</p>')
 
-    from datetime import datetime
     messages = _get_messages(ddb, group_name, start_value, end_value, task_only=False)
 
     parser = TaskParser()
@@ -504,6 +503,7 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
     group_value = state.get("selected_group")
 
     async def export_with_progress():
+        writer = None
         try:
             analysis_by_date = state.get("analysis_by_date", {})
             total = len(parsed_tasks)
@@ -572,7 +572,6 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
                 stage="save", message="正在保存文件...", progress=85
             ))
             writer.save(output_value)
-            writer.close()
             await progress_hub.emit(session_id, ProgressEvent(
                 stage="done",
                 message=f"导出完成！文件保存在：{output_value}",
@@ -582,8 +581,10 @@ async def export(request: Request, output_path: str = Form(""), sheet_name: str 
             await progress_hub.emit(session_id, ProgressEvent(
                 stage="error", message=f"导出失败：{e}", progress=0
             ))
+        finally:
+            if writer:
+                writer.close()
 
-    import asyncio
     # 预注册 SSE listener，防止时序问题
     progress_hub.register(session_id)
     asyncio.create_task(export_with_progress())
