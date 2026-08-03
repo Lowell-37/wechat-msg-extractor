@@ -225,12 +225,15 @@ def _store_connection(request: Request, key: str | None, success_message: str) -
         state["wdb"] = connected.manager
         state["ddb"] = connected.database
 
-        return HTMLResponse(
+        response = HTMLResponse(
             f'<p class="status-ok">✔ {success_message}（{connected.table_count} 张表，'
             f'{connected.shard_count} 个分片库）</p>'
             f'<div id="next-step-area" style="display:block;">'
             f'<a href="/step/2" class="btn btn-primary">下一步：选择群聊 →</a></div>'
         )
+        if request.cookies.get("session_id") != session_id:
+            response.set_cookie(key="session_id", value=session_id)
+        return response
     except Exception as e:
         return HTMLResponse(f'<p class="status-err">✘ 连接失败：{escape(str(e))}</p>')
 

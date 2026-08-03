@@ -183,3 +183,43 @@ def test_open_all_msg_dbs_cleans_temp_file_when_closing_later_file_fails(monkeyp
 
     assert closed == [True]
     assert not __import__("os").path.exists(temp_paths[1])
+
+
+def test_open_all_msg_dbs_closes_opened_shards_when_later_decryption_fails(monkeypatch, tmp_path):
+    data_dir = tmp_path / "Msg"
+    data_dir.mkdir()
+    (data_dir / "MSG0.db").touch()
+    (data_dir / "MSG1.db").touch()
+
+    closed = []
+    decrypt_calls = 0
+
+    def decrypt_first_shard_only(key, source, output):
+        nonlocal decrypt_calls
+        decrypt_calls += 1
+        if decrypt_calls == 2:
+            return False
+        import sqlite3
+
+        sqlite3.connect(output).close()
+        return True
+
+    class TrackingDB:
+        def __init__(self, **kwargs):
+            self.conn = kwargs["conn"]
+
+        def close(self):
+            closed.append(True)
+            self.conn.close()
+
+    monkeypatch.setattr("core.dbutils.decrypt_db_raw", decrypt_first_shard_only)
+    monkeypatch.setattr("core.dbutils.DecryptedDB", TrackingDB)
+
+    database = WeChatDB()
+    database._key = "ab" * 32
+    database._info = type("Info", (), {"data_dir": str(data_dir)})()
+
+    with pytest.raises(RuntimeError, match="decryption failed"):
+        database.open_all_msg_dbs()
+
+    assert closed == [True]

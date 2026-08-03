@@ -218,8 +218,7 @@ class WeChatDB:
                     temp_fd = None
                     success = decrypt_db_raw(self._key, db_path, temp_path)
                     if not success:
-                        os.unlink(temp_path)
-                        continue
+                        raise RuntimeError("message database decryption failed")
                     conn = sqlite3.connect(temp_path)
                     conn.row_factory = sqlite3.Row
                     dbs.append(DecryptedDB(
