@@ -1,5 +1,6 @@
 # app.py
 import uuid
+from html import escape
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -11,7 +12,8 @@ import uvicorn
 
 from config import AppConfig
 from core.ai_analyzer import create_analyzer
-from core.dbutils import WeChatDB, DecryptedDB, MergedMsgDB
+from core.connection import connect_wechat
+from core.dbutils import DecryptedDB
 from core.scanner import WeChatScanner
 from core.task_parser import TaskParser, ParsedTask
 from core.matcher import SheetMatcher
@@ -209,47 +211,32 @@ async def wechat_status():
     return HTMLResponse("".join(parts))
 
 
-@app.post("/api/key/extract")
-async def extract_key(request: Request):
+def _store_connection(request: Request, key: str | None, success_message: str) -> HTMLResponse:
     try:
-        wdb = WeChatDB()
-        success, msg = wdb.scan_and_extract()
-        if not success:
-            return HTMLResponse(f'<p class="status-err">✘ {msg}</p>')
-
-        dbs = wdb.open_all_msg_dbs()
-        if not dbs:
-            # Try single db for backward compat
-            ddb = wdb.open_msg_db()
-            if not ddb:
-                return HTMLResponse(
-                    f'<p class="status-ok">✔ 密钥提取成功</p>'
-                    f'<p class="status-err">✘ 但无法打开 MSG 数据库（密钥可能不兼容此版本）</p>'
-                )
-            dbs = [ddb]
-
-        merged = MergedMsgDB(dbs)
-
-        # Verify we can query
-        try:
-            tables = dbs[0].execute("SELECT count(*) as n FROM sqlite_master")
-            count = tables[0]["n"]
-            dbs[0].execute("SELECT count(*) as n FROM MSG LIMIT 1")
-        except Exception as e:
-            merged.close_all()
-            return HTMLResponse(f'<p class="status-err">✘ 数据库验证失败：{e}</p>')
+        connected = connect_wechat(key)
 
         session_id, state = get_session(request)
-        state["wdb"] = wdb
-        state["ddb"] = merged
+        state["wdb"] = connected.manager
+        state["ddb"] = connected.database
 
         return HTMLResponse(
-            f'<p class="status-ok">✔ 密钥提取并验证通过（{count} 张表，{len(dbs)} 个分片库）</p>'
+            f'<p class="status-ok">✔ {success_message}（{connected.table_count} 张表，'
+            f'{connected.shard_count} 个分片库）</p>'
             f'<div id="next-step-area" style="display:block;">'
             f'<a href="/step/2" class="btn btn-primary">下一步：选择群聊 →</a></div>'
         )
     except Exception as e:
-        return HTMLResponse(f'<p class="status-err">✘ 提取失败：{e}</p>')
+        return HTMLResponse(f'<p class="status-err">✘ 连接失败：{escape(str(e))}</p>')
+
+
+@app.post("/api/key/extract")
+async def extract_key(request: Request):
+    return _store_connection(request, None, "密钥提取并验证通过")
+
+
+@app.post("/api/key/validate")
+async def validate_key(request: Request, key: str = Form(...)):
+    return _store_connection(request, key, "验证通过")
 
 
 @app.get("/api/chatrooms/list")

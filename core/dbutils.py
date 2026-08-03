@@ -167,6 +167,17 @@ class WeChatDB:
         self._key = wx_infos[0]['key']
         return True, self._key
 
+    def scan_and_use_key(self, key_hex: str) -> Tuple[bool, str]:
+        """Scan for WeChat data and prepare a user-supplied database key."""
+        from core.validation import validate_hex_key
+
+        self._info = self._scanner.scan()
+        if not self._info.data_dir:
+            return False, "未找到数据目录"
+
+        self._key = validate_hex_key(key_hex)
+        return True, "密钥已接受"
+
     def open_msg_db(self) -> Optional[DecryptedDB]:
         """解密并打开第一个 MSG 数据库（兼容旧接口）。"""
         all_dbs = self.open_all_msg_dbs()
