@@ -1,0 +1,22 @@
+<div class="wizard-actions" aria-label="步骤操作">
+    <p class="wizard-actions__hint">
+        {% if next_enabled %}
+        <span aria-hidden="true">✓</span> 连接已验证，可以进入下一步
+        {% else %}
+        完成连接后即可继续
+        {% endif %}
+    </p>
+    {% if next_enabled %}
+    <a class="btn btn-primary"
+       href="/wizard/2"
+       hx-get="/wizard/2/partial"
+       hx-target="#wizard-workspace"
+       hx-swap="outerHTML">
+        下一步：选择数据 <span aria-hidden="true">→</span>
+    </a>
+    {% else %}
+    <button class="btn btn-primary" type="button" disabled>
+        下一步：选择数据 <span aria-hidden="true">→</span>
+    </button>
+    {% endif %}
+</div>

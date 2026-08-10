@@ -1,0 +1,75 @@
+<section class="step-panel connect-step" aria-labelledby="connect-title">
+    <div class="step-heading">
+        <p class="eyebrow">步骤 1 · 连接微信</p>
+        <h1 id="connect-title">准备并验证本机微信数据</h1>
+        <p>确认运行环境后，工具会在本机读取并验证消息数据库。</p>
+    </div>
+
+    <section class="environment-card" aria-labelledby="environment-title">
+        <div class="section-heading">
+            <div>
+                <h2 id="environment-title">环境检查</h2>
+                <p>已发现的信息会保留，连接失败时无需重新填写。</p>
+            </div>
+            <button type="button"
+                    class="btn btn-quiet btn-small"
+                    hx-get="/api/wechat/status"
+                    hx-target="#environment-status"
+                    hx-swap="innerHTML">
+                ↻ 重新检测
+            </button>
+        </div>
+        <div id="environment-status">
+            {% include "fragments/wechat_status.html" %}
+        </div>
+    </section>
+
+    <div id="connection-status" class="connection-status" aria-live="polite" aria-atomic="true">
+        {% include "components/status_message.html" %}
+    </div>
+
+    <section class="connection-card" aria-labelledby="automatic-title">
+        <div>
+            <h2 id="automatic-title">自动连接</h2>
+            <p>自动提取当前微信进程的密钥，并验证所有可用消息分片。</p>
+        </div>
+        <button type="button"
+                class="btn btn-primary btn-connect"
+                hx-post="/api/key/extract"
+                hx-target="#wizard-workspace"
+                hx-swap="innerHTML">
+            <span aria-hidden="true">⌁</span> 连接并继续
+        </button>
+    </section>
+
+    <details class="advanced-options">
+        <summary>高级选项 <span>手动输入密钥</span></summary>
+        <div class="advanced-options__body">
+            <p>仅在自动提取失败且你已拥有 64 位十六进制密钥时使用。</p>
+            <form class="manual-key-form"
+                  hx-post="/api/key/validate"
+                  hx-target="#wizard-workspace"
+                  hx-swap="innerHTML">
+                <label for="manual-key">手动输入密钥</label>
+                <div class="input-action-row">
+                    <input id="manual-key"
+                           class="input-key"
+                           type="password"
+                           name="key"
+                           inputmode="text"
+                           autocomplete="off"
+                           spellcheck="false"
+                           minlength="64"
+                           maxlength="64"
+                           pattern="[0-9a-fA-F]{64}"
+                           aria-describedby="manual-key-help"
+                           required>
+                    <button type="submit" class="btn btn-secondary">验证密钥</button>
+                </div>
+                <small id="manual-key-help">密钥仅用于本次本机数据库验证，不会写入页面或日志。</small>
+            </form>
+        </div>
+    </details>
+
+    {% include "components/wizard_actions.html" %}
+</section>

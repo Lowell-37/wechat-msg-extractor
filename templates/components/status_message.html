@@ -1,0 +1,22 @@
+{% if connection_status %}
+<section class="status-message status-message--{{ connection_status.tone }}"
+         role="{{ 'alert' if connection_status.tone == 'error' else 'status' }}">
+    <span class="status-message__icon" aria-hidden="true">{{ connection_status.icon }}</span>
+    <div>
+        <h3>{{ connection_status.heading }}</h3>
+        <p><strong>{{ connection_status.label }}</strong> {{ connection_status.message }}</p>
+        {% if connection_status.recovery %}
+        <p><strong>恢复建议：</strong>{{ connection_status.recovery }}</p>
+        {% endif %}
+        {% if connection_status.retry_url %}
+        <button type="button"
+                class="btn btn-secondary btn-small"
+                hx-post="{{ connection_status.retry_url }}"
+                hx-target="#wizard-workspace"
+                hx-swap="innerHTML">
+            ↻ 重试连接
+        </button>
+        {% endif %}
+    </div>
+</section>
+{% endif %}

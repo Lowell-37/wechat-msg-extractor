@@ -16,6 +16,8 @@ from core.validation import (
     resolve_output_path,
     validate_sheet_name,
 )
+from routers.wizard import build_connection_view_model, build_wizard_context
+from schemas.wizard import WizardStep
 from services import export as export_service
 from services.catalog import filter_catalog, load_catalog
 from services.preview import build_legacy_preview
@@ -27,54 +29,10 @@ router = APIRouter()
 
 @router.get("/api/wechat/status")
 async def wechat_status(request: Request):
-    config = request.app.state.config
-    scanner = request.app.state.scanner_factory(
-        install_path=config.wechat.version_dir,
-        data_dir=config.wechat.data_dir,
-    )
-    info = scanner.scan()
-    items = []
-    if info.version:
-        items.extend(
-            [
-                {
-                    "status_class": "status-ok",
-                    "message": f"✔ 微信版本：{info.version}",
-                },
-                {
-                    "status_class": "status-ok",
-                    "message": f"✔ 安装路径：{info.install_path}",
-                },
-            ]
-        )
-    else:
-        items.append(
-            {"status_class": "status-err", "message": "✘ 未检测到微信安装"}
-        )
-    if info.pid:
-        items.append(
-            {"status_class": "status-ok", "message": f"✔ 微信进程 PID：{info.pid}"}
-        )
-    else:
-        items.append(
-            {"status_class": "status-err", "message": "✘ 微信未运行"}
-        )
-    if info.data_dir:
-        items.append(
-            {
-                "status_class": "status-ok",
-                "message": f"✔ 数据目录：{info.data_dir}",
-            }
-        )
-    else:
-        items.append(
-            {"status_class": "status-err", "message": "✘ 未找到数据目录"}
-        )
-    items.extend(
-        {"status_class": "status-warn", "message": f"⚠ {error}"}
-        for error in info.errors
-    )
-    return _template(request, "fragments/wechat_status.html", {"items": items})
+    session_id, state = get_session(request)
+    context = build_connection_view_model(request, state, refresh=True)
+    response = _template(request, "fragments/wechat_status.html", context)
+    return _with_session_cookie(request, response, session_id)
 
 
 @router.post("/api/key/extract")
@@ -353,14 +311,25 @@ def _store_connection(
     key: str | None,
     success_message: str,
 ):
-    session_id, _ = get_session(request)
+    session_id, state = get_session(request)
     if export_service.has_active_job(session_id):
-        return _session_template_error(
+        response = _connection_template(
             request,
-            session_id,
-            "导出任务正在进行，请稍后重试",
-            409,
+            state,
+            {
+                "tone": "error",
+                "icon": "!",
+                "heading": "暂时无法重新连接",
+                "label": "失败原因：",
+                "message": "导出任务正在进行。",
+                "recovery": "等待当前导出结束后再重试。",
+                "retry_url": "/api/key/extract",
+            },
+            status_code=409,
         )
+        return _with_session_cookie(request, response, session_id)
+
+    connection_context = build_connection_view_model(request, state)
     try:
         config = request.app.state.config
         connection_kwargs = {}
@@ -377,29 +346,69 @@ def _store_connection(
         dispose_session(session_id)
         state = new_session_state()
         session_state[session_id] = state
+        state["wechat_environment"] = {
+            "items": connection_context["environment_items"],
+            "warnings": connection_context["environment_warnings"],
+        }
         state["wdb"] = connected.manager
         state["ddb"] = connected.database
         mark_connected(get_wizard(state))
-        response = _template(
+        response = _connection_template(
             request,
-            "fragments/connection_result.html",
+            state,
             {
-                "success_message": success_message,
-                "table_count": connected.table_count,
-                "shard_count": connected.shard_count,
+                "tone": "success",
+                "icon": "✓",
+                "heading": "连接成功",
+                "label": "验证结果：",
+                "message": (
+                    f"{success_message}，已验证 {connected.shard_count} 个消息分片、"
+                    f"{connected.table_count} 张表。"
+                ),
+                "recovery": "",
+                "retry_url": "",
             },
         )
     except Exception as exc:  # noqa: BLE001
-        response = _template(
+        response = _connection_template(
             request,
-            "fragments/status_message.html",
+            state,
             {
-                "status_class": "status-err",
-                "message": f"✘ 连接失败：{exc}",
+                "tone": "error",
+                "icon": "!",
+                "heading": "连接失败",
+                "label": "失败原因：",
+                "message": str(exc),
+                "recovery": "确认微信已启动并登录；如自动连接仍失败，可在高级选项中输入密钥。",
+                "retry_url": "/api/key/extract",
             },
             status_code=400,
         )
     return _with_session_cookie(request, response, session_id)
+
+
+def _connection_template(
+    request: Request,
+    state: dict[str, Any],
+    connection_status: dict[str, str],
+    *,
+    status_code: int = 200,
+):
+    wizard = get_wizard(state)
+    context = build_wizard_context(WizardStep.CONNECT, wizard)
+    context.update(
+        build_connection_view_model(
+            request,
+            state,
+            connection_status=connection_status,
+        )
+    )
+    return _template(
+        request,
+        "steps/connect.html",
+        context,
+        status_code=status_code,
+    )
 
 
 def _template(

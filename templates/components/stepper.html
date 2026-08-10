@@ -1,0 +1,22 @@
+<nav id="wizard-stepper" class="stepper" aria-label="提取流程">
+    <ol>
+        {% for item in wizard_steps %}
+        <li class="stepper-item stepper-item--{{ item.status }}" aria-current="{{ 'step' if item.status == 'active' else 'false' }}">
+            {% if item.can_visit and item.number != step %}
+            <a href="/wizard/{{ item.number }}"
+               hx-get="/wizard/{{ item.number }}/partial"
+               hx-target="#wizard-workspace"
+               hx-swap="outerHTML">
+                <span class="stepper-number" aria-hidden="true">{{ '✓' if item.status == 'completed' else item.number }}</span>
+                <span class="stepper-copy"><small>步骤 {{ item.number }}</small>{{ item.label }}</span>
+            </a>
+            {% else %}
+            <span class="stepper-link"{% if item.status == 'locked' %} aria-disabled="true"{% endif %}>
+                <span class="stepper-number" aria-hidden="true">{{ '✓' if item.status == 'completed' else item.number }}</span>
+                <span class="stepper-copy"><small>步骤 {{ item.number }}</small>{{ item.label }}</span>
+            </span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>
