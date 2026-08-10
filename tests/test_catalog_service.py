@@ -109,3 +109,22 @@ def test_new_production_session_binds_configured_manual_group_sheet_map(
     catalog = load_catalog(state, str(template_path))
 
     assert catalog[0].suggested_sheet == "配置工作表"
+
+
+def test_new_production_session_binds_composition_root_factories(monkeypatch):
+    class FakeWriter:
+        def __init__(self, path):
+            self.path = path
+
+    class FakeParser:
+        pass
+
+    monkeypatch.setattr(app_module, "ExcelWriter", FakeWriter)
+    monkeypatch.setattr(app_module, "TaskParser", FakeParser)
+
+    state = app_module._new_session_state()
+
+    catalog_dependencies = state["catalog_dependencies"]
+    preview_dependencies = state["preview_dependencies"]
+    assert isinstance(catalog_dependencies.excel_writer_factory("ignored"), FakeWriter)
+    assert isinstance(preview_dependencies.task_parser_factory(), FakeParser)

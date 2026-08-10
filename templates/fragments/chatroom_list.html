@@ -1,0 +1,22 @@
+{% if options %}
+    {% include "fragments/chatroom_rows.html" %}
+    <form hx-post="/api/preview" hx-target="#main-content" hx-swap="outerHTML" id="select-form">
+        <input type="hidden" name="group_name" id="selected-group">
+        <input type="hidden" name="sheet_name" id="selected-sheet">
+        <input type="hidden" name="start_date" id="selected-start">
+        <input type="hidden" name="end_date" id="selected-end">
+    </form>
+    <script>
+    function select(el) {
+      document.querySelectorAll(".chatroom-item").forEach(e => e.classList.remove("selected"));
+      el.classList.add("selected");
+      document.getElementById("selected-group").value = el.dataset.group;
+      document.getElementById("selected-sheet").value = el.dataset.sheet;
+      document.getElementById("selected-start").value = document.querySelector("[name=start_date]").value;
+      document.getElementById("selected-end").value = document.querySelector("[name=end_date]").value;
+      document.getElementById("select-form").requestSubmit();
+    }
+    </script>
+{% else %}
+    <p class="status-warn">未找到群聊记录</p>
+{% endif %}

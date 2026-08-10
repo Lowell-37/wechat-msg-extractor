@@ -3,6 +3,8 @@ import asyncio
 from fastapi.testclient import TestClient
 
 import app as app_module
+from services import export as export_service
+from services import session as session_service
 
 
 class TrackingDatabase:
@@ -110,3 +112,12 @@ def test_shutdown_cancels_jobs_before_disposing_sessions():
     assert app_module.export_tasks == {}
     assert app_module.session_jobs == {}
     assert app_module.job_owners == {}
+
+
+def test_app_lifecycle_exports_are_service_compatibility_aliases():
+    assert app_module.session_state is session_service.session_state
+    assert app_module.export_tasks is export_service.export_tasks
+    assert app_module.session_jobs is export_service.session_jobs
+    assert app_module.job_owners is export_service.job_owners
+    assert app_module.dispose_session is session_service.dispose_session
+    assert app_module.shutdown_resources is session_service.shutdown_resources

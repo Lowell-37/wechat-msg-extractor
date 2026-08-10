@@ -5,7 +5,12 @@ from typing import Any
 
 from core.validation import ValidationError, parse_date_range, validate_sheet_name
 from schemas.catalog import PreviewDependencies, PreviewResult, PreviewSummary
-from services.wizard import get_wizard, store_preview, update_selection
+from services.wizard import (
+    get_wizard,
+    mark_connected,
+    store_preview,
+    update_selection,
+)
 
 
 def build_preview(
@@ -53,6 +58,59 @@ def build_preview(
     store_preview(wizard, tasks)
     state["selected_group"] = group_id
     state["selected_sheet"] = validated_sheet
+    state["start_date"] = start_date
+    state["end_date"] = end_date
+    state["parsed_tasks"] = tasks
+    state["analysis_by_date"] = analysis_by_date
+    return result
+
+
+def build_legacy_preview(
+    state: MutableMapping[str, Any],
+    group_name: str,
+    start_date: str,
+    end_date: str,
+    sheet_name: str,
+) -> PreviewResult:
+    """Build a preview for the legacy action contract used before Task 5."""
+    start_value, end_value = parse_date_range(start_date, end_date)
+    dependencies = _preview_dependencies(state)
+    messages = dependencies.fetch_messages(
+        state[dependencies.database_key],
+        group_name,
+        start_value,
+        end_value,
+        False,
+    )
+    tasks, analysis_by_date = _parse_messages(messages, dependencies)
+    result = PreviewResult(
+        summary=PreviewSummary(
+            group_id=group_name,
+            group_name=group_name,
+            start_date=start_value,
+            end_date=end_value,
+            sheet_name=sheet_name,
+            message_count=len(messages),
+            task_count=len(tasks),
+        ),
+        tasks=tasks,
+        grouped_tasks=_group_tasks(tasks),
+        analysis_by_date=analysis_by_date,
+    )
+
+    wizard = get_wizard(state)
+    mark_connected(wizard)
+    update_selection(
+        wizard,
+        group_name,
+        group_name,
+        start_value,
+        end_value,
+        sheet_name,
+    )
+    store_preview(wizard, tasks)
+    state["selected_group"] = group_name
+    state["selected_sheet"] = sheet_name
     state["start_date"] = start_date
     state["end_date"] = end_date
     state["parsed_tasks"] = tasks

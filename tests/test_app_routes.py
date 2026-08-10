@@ -382,7 +382,7 @@ def test_chatroom_list_escapes_text_and_quoted_attributes(monkeypatch, client_wi
     assert response.status_code == 200
     assert "<img" not in response.text
     assert "&lt;img src=x onerror=alert(1)&gt;&amp;entity;" in response.text
-    assert 'data-group="evil&quot; onclick=&quot;alert(1)@chatroom"' in response.text
+    assert 'data-group="evil&#34; onclick=&#34;alert(1)@chatroom"' in response.text
     assert 'data-group="evil" onclick=' not in response.text
 
 
