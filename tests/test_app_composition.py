@@ -42,6 +42,19 @@ def test_partial_route_returns_fragment_not_document(client):
     assert 'id="wizard-workspace"' in response.text
 
 
+def test_inaccessible_partial_redirect_chain_remains_fragment_only(client):
+    response = client.get(
+        "/wizard/3/partial",
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert response.history[0].status_code == 303
+    assert response.history[0].headers["location"] == "/wizard/1/partial"
+    assert "<!DOCTYPE html>" not in response.text
+    assert 'id="wizard-workspace"' in response.text
+
+
 @pytest.mark.parametrize(
     ("legacy_path", "wizard_path"),
     [("/step/2", "/wizard/2"), ("/step/3", "/wizard/3")],

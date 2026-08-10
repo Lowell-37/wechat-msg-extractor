@@ -60,8 +60,9 @@ def _render_wizard_step(
     wizard = get_wizard(state)
     accessible = request_step(wizard, requested)
     if accessible is not requested:
+        suffix = "/partial" if partial else ""
         response = RedirectResponse(
-            f"/wizard/{int(accessible)}", status_code=303
+            f"/wizard/{int(accessible)}{suffix}", status_code=303
         )
         return _with_session_cookie(request, response, session_id)
 
