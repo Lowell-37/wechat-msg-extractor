@@ -20,22 +20,33 @@
     });
 
     document.addEventListener("change", function (event) {
-        var radio = event.target.closest('input[type="radio"][name="group_id"]');
-        if (!radio) {
+        var control = event.target.closest(".selection-control");
+        if (!control) {
             return;
         }
-        var form = radio.closest("#selection-form");
+        var form = control.closest("#selection-form");
         if (!form) {
             return;
         }
-        form.querySelector('input[name="group_name"]').value = radio.dataset.groupName;
-        form.querySelectorAll("[data-chatroom-row]").forEach(function (row) {
-            var rowRadio = row.querySelector('input[name="group_id"]');
-            var rowSheet = row.querySelector('select[name="sheet_name"]');
-            var selected = rowRadio === radio;
-            row.classList.toggle("chatroom-row--selected", selected);
-            rowSheet.disabled = !selected;
-        });
+        var radio = control.closest('input[type="radio"][name="group_choice"]');
+        if (radio) {
+            form.querySelector('input[name="group_id"]').value = radio.value;
+            form.querySelector('input[name="group_name"]').value = radio.dataset.groupName;
+            form.querySelectorAll("[data-chatroom-row]").forEach(function (row) {
+                var rowRadio = row.querySelector('input[name="group_choice"]');
+                var rowSheet = row.querySelector('select[name="sheet_choice"]');
+                var selected = rowRadio === radio;
+                row.classList.toggle("chatroom-row--selected", selected);
+                rowSheet.disabled = !selected;
+                if (selected) {
+                    form.querySelector('input[name="sheet_name"]').value = rowSheet.value;
+                }
+            });
+            return;
+        }
+        if (control.matches('select[name="sheet_choice"]')) {
+            form.querySelector('input[name="sheet_name"]').value = control.value;
+        }
     }, true);
 
     window.addEventListener("popstate", async function () {

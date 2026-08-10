@@ -52,6 +52,32 @@ def update_selection(
         wizard.active_step = WizardStep.SELECT
 
 
+def update_session_selection(
+    state: MutableMapping[str, Any],
+    group_id: str,
+    group_name: str,
+    start_date: date,
+    end_date: date,
+    sheet_name: str,
+) -> bool:
+    """Store selection compatibility state and invalidate derived data together."""
+    wizard = get_wizard(state)
+    changed = wizard.selection != WizardSelection(
+        group_id, group_name, start_date, end_date, sheet_name
+    )
+    update_selection(
+        wizard, group_id, group_name, start_date, end_date, sheet_name
+    )
+    state["selected_group"] = group_id
+    state["selected_sheet"] = sheet_name
+    state["start_date"] = start_date.isoformat()
+    state["end_date"] = end_date.isoformat()
+    if changed:
+        state["parsed_tasks"] = []
+        state["analysis_by_date"] = {}
+    return changed
+
+
 def store_preview(wizard: WizardState, tasks: Sequence[Any]) -> None:
     """Persist a generated preview without automatically advancing the wizard."""
     if not wizard.connected or not has_complete_selection(wizard.selection):

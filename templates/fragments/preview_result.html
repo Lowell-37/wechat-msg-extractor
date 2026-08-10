@@ -28,7 +28,11 @@
         {% endfor %}
     </table>
     <div class="btn-group">
-        <a href="/wizard/2" class="btn btn-secondary">← 返回修改</a>
+        <a href="/wizard/2"
+           class="btn btn-secondary"
+           hx-get="/wizard/2/partial"
+           hx-target="#wizard-workspace"
+           hx-swap="outerHTML">← 返回修改</a>
         <button class="btn btn-primary"
                 hx-post="/api/export" hx-include="#output-path,#selected-sheet"
                 hx-target="#export-result" hx-swap="innerHTML">确认导出 →</button>

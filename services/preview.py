@@ -9,7 +9,7 @@ from services.wizard import (
     get_wizard,
     mark_connected,
     store_preview,
-    update_selection,
+    update_session_selection,
 )
 
 
@@ -47,8 +47,8 @@ def build_preview(
     )
 
     wizard = get_wizard(state)
-    update_selection(
-        wizard,
+    update_session_selection(
+        state,
         group_id,
         group_name,
         start_value,
@@ -56,10 +56,6 @@ def build_preview(
         validated_sheet,
     )
     store_preview(wizard, tasks)
-    state["selected_group"] = group_id
-    state["selected_sheet"] = validated_sheet
-    state["start_date"] = start_date
-    state["end_date"] = end_date
     state["parsed_tasks"] = tasks
     state["analysis_by_date"] = analysis_by_date
     return result
@@ -100,8 +96,8 @@ def build_legacy_preview(
 
     wizard = get_wizard(state)
     mark_connected(wizard)
-    update_selection(
-        wizard,
+    update_session_selection(
+        state,
         group_name,
         group_name,
         start_value,
@@ -109,10 +105,6 @@ def build_legacy_preview(
         sheet_name,
     )
     store_preview(wizard, tasks)
-    state["selected_group"] = group_name
-    state["selected_sheet"] = sheet_name
-    state["start_date"] = start_date
-    state["end_date"] = end_date
     state["parsed_tasks"] = tasks
     state["analysis_by_date"] = analysis_by_date
     return result

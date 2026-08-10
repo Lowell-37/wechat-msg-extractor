@@ -6,7 +6,7 @@
     <input id="group-{{ loop.index }}"
            class="chatroom-radio selection-control"
            type="radio"
-           name="group_id"
+           name="group_choice"
            value="{{ option.chat_id }}"{% if is_selected %} checked{% endif %}
            data-group-name="{{ option.display_name }}"
            >
@@ -25,7 +25,7 @@
         <label for="sheet-{{ loop.index }}">目标 Sheet</label>
         <select class="chatroom-sheet-select selection-control"
                 id="sheet-{{ loop.index }}"
-                name="sheet_name"
+                name="sheet_choice"
                 {% if not is_selected %}disabled{% endif %}>
             <option value="">请选择 Sheet</option>
             {% if is_selected and row_sheet and row_sheet not in sheet_names %}

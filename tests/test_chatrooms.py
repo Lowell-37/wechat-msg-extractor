@@ -1,10 +1,40 @@
 import os
 import sqlite3
 import tempfile
+from pathlib import Path
 
 import pytest
 
 import app as app_module
+
+
+def test_production_chatroom_query_returns_message_metadata(tmp_path: Path):
+    msg_path = tmp_path / "MSG0.db"
+    msg_path.touch()
+
+    class MessageDatabase:
+        original_path = str(msg_path)
+        key_hex = "ab" * 32
+
+        def execute(self, sql, params=()):
+            assert "MAX(CreateTime)" in sql
+            assert "COUNT(*)" in sql
+            return [
+                {
+                    "StrTalker": "room-1@chatroom",
+                    "LastMessageAt": 1785634100,
+                    "MessageCount": 20,
+                },
+                {
+                    "StrTalker": "room-1@chatroom",
+                    "LastMessageAt": 1785634200,
+                    "MessageCount": 22,
+                },
+            ]
+
+    assert app_module._get_chatrooms(MessageDatabase()) == [
+        ("room-1@chatroom", "room-1@chatroom", 1785634200, 42)
+    ]
 
 
 @pytest.mark.parametrize("failing_query", [1, 2])

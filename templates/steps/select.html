@@ -8,10 +8,13 @@
     <form id="selection-form"
           class="selection-form"
           hx-post="/api/selection"
-          hx-trigger="change from:.selection-control"
+          hx-trigger="change[event.target.matches('.selection-control')]"
           hx-target="#wizard-workspace"
           hx-swap="innerHTML">
+        <input type="hidden" name="selection_source" value="wizard">
+        <input type="hidden" name="group_id" value="{{ group_id }}">
         <input type="hidden" name="group_name" value="{{ group_name }}">
+        <input type="hidden" name="sheet_name" value="{{ sheet_name }}">
 
         <div class="selection-search">
             <label for="chatroom-query">搜索群聊</label>
@@ -109,9 +112,9 @@
     {% with stepper_oob = true %}
         {% include "components/stepper.html" %}
     {% endwith %}
-    {% if validation_error %}
     <div id="wizard-announcer" hx-swap-oob="innerHTML">
+        {% if validation_error %}
         <span>选择未保存。{{ validation_error }}</span>
+        {% endif %}
     </div>
-    {% endif %}
 {% endif %}

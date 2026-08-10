@@ -1,4 +1,5 @@
 from collections.abc import MutableMapping
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from core.excel_writer import ExcelWriter
@@ -27,17 +28,20 @@ def load_catalog(
         if writer is not None:
             writer.close()
 
+    records = [_normalize_chatroom(record) for record in chatrooms]
     matcher = SheetMatcher(
         list(sheet_names), manual_map=dict(dependencies.manual_group_sheet_map)
     )
-    suggested_sheets = matcher.match([display_name for _, display_name in chatrooms])
+    suggested_sheets = matcher.match([record[1] for record in records])
     catalog = tuple(
         ChatroomOption(
             chat_id=chat_id,
             display_name=display_name,
+            last_message_at=last_message_at,
+            message_count=message_count,
             suggested_sheet=suggested_sheets.get(display_name) or "",
         )
-        for chat_id, display_name in chatrooms
+        for chat_id, display_name, last_message_at, message_count in records
     )
     state["chatroom_catalog"] = catalog
     state["catalog_sheet_names"] = sheet_names
@@ -68,6 +72,18 @@ def find_catalog_option(
             if option.chat_id == group_id and option.display_name == group_name:
                 return option
     raise ValidationError("群聊选择无效或已过期")
+
+
+def _normalize_chatroom(
+    record: tuple[str, str] | tuple[str, str, int | datetime | None, int],
+) -> tuple[str, str, datetime | None, int]:
+    if len(record) == 2:
+        chat_id, display_name = record
+        return chat_id, display_name, None, 0
+    chat_id, display_name, last_message_at, message_count = record
+    if last_message_at is not None and not isinstance(last_message_at, datetime):
+        last_message_at = datetime.fromtimestamp(last_message_at, UTC).astimezone()
+    return chat_id, display_name, last_message_at, message_count
 
 
 def _catalog_dependencies(state: MutableMapping[str, Any]) -> CatalogDependencies:

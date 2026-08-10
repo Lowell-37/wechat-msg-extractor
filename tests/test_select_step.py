@@ -5,7 +5,12 @@ from fastapi.testclient import TestClient
 
 import app as app_module
 from schemas.catalog import ChatroomOption, PreviewDependencies
-from services.wizard import get_wizard, mark_connected, update_selection
+from services.wizard import (
+    get_wizard,
+    mark_connected,
+    store_preview,
+    update_selection,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +132,41 @@ def test_valid_selection_is_stored_and_enables_preview(connected_client):
     assert state["selected_sheet"] == "项目群"
 
 
+def test_changed_selection_invalidates_legacy_export_state(connected_client):
+    state = app_module.session_state[connected_client.cookies["session_id"]]
+    update_selection(
+        state["wizard"],
+        "room-1",
+        "项目群",
+        date(2026, 8, 1),
+        date(2026, 8, 3),
+        "项目群",
+    )
+    store_preview(state["wizard"], ["old typed task"])
+    state["parsed_tasks"] = ["old compatibility task"]
+    state["analysis_by_date"] = {"2026-08-02": ["old analysis"]}
+
+    changed = connected_client.post(
+        "/api/selection",
+        data={
+            "group_id": "room-2",
+            "group_name": "运营群",
+            "start_date": "2026-08-02",
+            "end_date": "2026-08-04",
+            "sheet_name": "运营群",
+        },
+    )
+    exported = connected_client.post(
+        "/api/export", data={"sheet_name": "运营群", "output_path": "result.xlsx"}
+    )
+
+    assert changed.status_code == 200
+    assert state["parsed_tasks"] == []
+    assert state["analysis_by_date"] == {}
+    assert exported.status_code == 400
+    assert "没有可导出的任务" in exported.text
+
+
 def test_invalid_date_keeps_submitted_values_and_disables_preview(connected_client):
     response = connected_client.post(
         "/api/selection",
@@ -242,6 +282,87 @@ def test_preview_uses_validated_selection_and_pushes_step_three(connected_client
     assert 'id="wizard-workspace"' in response.text
     assert "步骤 3：预览与导出" in response.text
     assert 'hx-swap-oob="outerHTML"' in response.text
+    back_action = response.text.split("← 返回修改", 1)[0].rsplit("<a", 1)[1]
+    assert 'hx-get="/wizard/2/partial"' in back_action
+    assert 'hx-target="#wizard-workspace"' in back_action
+
+
+def test_filtered_selection_uses_stable_validated_state_for_preview(
+    connected_client,
+):
+    selected = connected_client.post(
+        "/api/selection",
+        data={
+            "group_id": "room-1",
+            "group_name": "项目群",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-03",
+            "sheet_name": "项目群",
+        },
+    )
+    filtered = connected_client.get(
+        "/api/catalog",
+        params={"query": "运营", "group_id": "room-1", "sheet_name": "项目群"},
+    )
+    preview = connected_client.post(
+        "/api/preview",
+        data={"selection_source": "wizard"},
+    )
+    cleared = connected_client.get(
+        "/api/catalog",
+        params={"query": "", "group_id": "room-1", "sheet_name": "项目群"},
+    )
+
+    assert 'type="hidden" name="group_id" value="room-1"' in selected.text
+    assert 'type="hidden" name="sheet_name" value="项目群"' in selected.text
+    assert 'data-group-name="项目群"' not in filtered.text
+    assert preview.status_code == 200
+    assert preview.headers["HX-Push-Url"] == "/wizard/3"
+    assert 'value="room-1" checked' in cleared.text
+
+
+def test_search_replacement_rows_use_stable_delegated_selection_contract(
+    connected_client,
+):
+    step = connected_client.get("/wizard/2")
+    rows = connected_client.get("/api/catalog", params={"query": "运营"})
+    script = connected_client.get("/static/wizard.js")
+
+    assert 'hx-trigger="change[event.target.matches(\'.selection-control\')]"' in step.text
+    assert 'name="group_choice"' in rows.text
+    assert 'name="sheet_choice"' in rows.text
+    assert 'input[name="group_id"]' in script.text
+    assert 'input[name="sheet_name"]' in script.text
+
+
+def test_successful_selection_clears_prior_announcer_error(connected_client):
+    connected_client.post(
+        "/api/selection",
+        data={
+            "group_id": "room-1",
+            "group_name": "项目群",
+            "start_date": "2026-08-03",
+            "end_date": "2026-08-01",
+            "sheet_name": "项目群",
+        },
+    )
+
+    response = connected_client.post(
+        "/api/selection",
+        data={
+            "group_id": "room-1",
+            "group_name": "项目群",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-03",
+            "sheet_name": "项目群",
+        },
+    )
+
+    assert response.status_code == 200
+    announcer = response.text.split(
+        '<div id="wizard-announcer" hx-swap-oob="innerHTML">', 1
+    )[1].split("</div>", 1)[0]
+    assert announcer.strip() == ""
 
 
 def test_browser_history_fetches_partials_and_focuses_the_step_heading(

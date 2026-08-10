@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -42,6 +43,41 @@ def test_filter_catalog_reuses_loaded_catalog_without_requerying_database(tmp_pa
     assert database.query_count == 1
     assert second == [first[0]]
     assert first[0].suggested_sheet == "项目群"
+
+
+def test_catalog_builder_caches_real_message_metadata_without_search_requery(
+    tmp_path: Path,
+):
+    template_path = tmp_path / "template.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "项目群"
+    workbook.save(template_path)
+    workbook.close()
+    database = FakeDatabase()
+    message_timestamp = 1785634200
+
+    def query_chatrooms(queried_database):
+        queried_database.query_count += 1
+        return [("room-1", "项目群", message_timestamp, 42)]
+
+    state = {
+        "database": database,
+        "catalog_dependencies": CatalogDependencies(
+            query_chatrooms=query_chatrooms,
+            database_key="database",
+        ),
+    }
+
+    catalog = load_catalog(state, str(template_path))
+    filtered = filter_catalog(state, "项目")
+    filter_catalog(state, "room")
+
+    assert catalog[0].last_message_at == datetime.fromtimestamp(
+        message_timestamp, UTC
+    ).astimezone()
+    assert catalog[0].message_count == 42
+    assert filtered == [catalog[0]]
+    assert database.query_count == 1
 
 
 def test_catalog_records_are_cached_as_an_immutable_tuple(tmp_path: Path):

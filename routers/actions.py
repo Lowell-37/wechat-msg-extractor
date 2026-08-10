@@ -27,7 +27,13 @@ from services import export as export_service
 from services.catalog import filter_catalog, find_catalog_option, load_catalog
 from services.preview import build_legacy_preview, build_preview
 from services.session import dispose_session, get_session, new_session_state, session_state
-from services.wizard import get_wizard, mark_connected, request_step, update_selection
+from services.wizard import (
+    get_wizard,
+    has_complete_selection,
+    mark_connected,
+    request_step,
+    update_session_selection,
+)
 
 router = APIRouter()
 
@@ -166,18 +172,14 @@ async def selection(
             sheet_value = validate_sheet_name(
                 sheet_name, state.get("catalog_sheet_names", ())
             )
-            update_selection(
-                wizard,
+            update_session_selection(
+                state,
                 option.chat_id,
                 option.display_name,
                 start_value,
                 end_value,
                 sheet_value,
             )
-            state["selected_group"] = option.chat_id
-            state["selected_sheet"] = sheet_value
-            state["start_date"] = start_date
-            state["end_date"] = end_date
         except ValidationError as exc:
             error = str(exc)
     status_code = 422 if error else 200
@@ -202,19 +204,43 @@ async def selection(
 @router.post("/api/preview")
 async def preview(
     request: Request,
+    selection_source: str = Form(""),
     group_id: str = Form(""),
-    group_name: str = Form(...),
+    group_name: str = Form(""),
     sheet_name: str = Form(""),
-    start_date: str = Form(...),
-    end_date: str = Form(...),
+    start_date: str = Form(""),
+    end_date: str = Form(""),
 ):
     session_id, state = get_session(request)
     if not state.get("ddb"):
         return _session_template_error(
             request, session_id, "请先完成鉴权", 401
         )
+    wizard_selection = get_wizard(state).selection
+    if selection_source == "wizard" and not has_complete_selection(
+        wizard_selection
+    ):
+        return _session_template_error(
+            request, session_id, "选择尚未完成或已过期", 400
+        )
     try:
-        if group_id:
+        if selection_source == "wizard":
+            find_catalog_option(
+                state, wizard_selection.group_id, wizard_selection.group_name
+            )
+            validate_sheet_name(
+                wizard_selection.sheet_name,
+                state.get("catalog_sheet_names", ()),
+            )
+            result = build_preview(
+                state,
+                wizard_selection.group_id,
+                wizard_selection.group_name,
+                wizard_selection.start_date.isoformat(),
+                wizard_selection.end_date.isoformat(),
+                wizard_selection.sheet_name,
+            )
+        elif group_id:
             result = build_preview(
                 state,
                 group_id,
@@ -527,17 +553,35 @@ def _with_session_cookie(request: Request, response: Any, session_id: str):
     return response
 
 
-def _get_chatrooms(ddb: DecryptedDB) -> list[tuple[str, str]]:
-    """Return chatroom IDs and display names from MSG and MicroMsg data."""
+def _get_chatrooms(
+    ddb: DecryptedDB,
+) -> list[tuple[str, str, int | None, int]]:
+    """Return chatroom identities and one-time message metadata."""
     chatroom_ids: set[str] = set()
+    metadata: dict[str, tuple[int | None, int]] = {}
     try:
         rows = ddb.execute(
-            "SELECT DISTINCT StrTalker FROM MSG "
-            "WHERE StrTalker LIKE '%@chatroom'"
+            "SELECT StrTalker, MAX(CreateTime) AS LastMessageAt, "
+            "COUNT(*) AS MessageCount FROM MSG "
+            "WHERE StrTalker LIKE '%@chatroom' GROUP BY StrTalker"
         )
-        chatroom_ids.update(
-            row["StrTalker"] for row in rows if row["StrTalker"]
-        )
+        for row in rows:
+            chatroom_id = row["StrTalker"]
+            if chatroom_id:
+                chatroom_ids.add(chatroom_id)
+                previous_last, previous_count = metadata.get(
+                    chatroom_id, (None, 0)
+                )
+                current_last = row["LastMessageAt"]
+                latest = max(
+                    timestamp
+                    for timestamp in (previous_last, current_last)
+                    if timestamp is not None
+                )
+                metadata[chatroom_id] = (
+                    latest,
+                    previous_count + row["MessageCount"],
+                )
     except Exception:  # noqa: BLE001 - optional MSG discovery may fail by schema
         request_logger().debug("MSG chatroom discovery failed", exc_info=True)
 
@@ -617,7 +661,12 @@ def _get_chatrooms(ddb: DecryptedDB) -> list[tuple[str, str]]:
                 )
 
     return [
-        (chatroom_id, name_map.get(chatroom_id, chatroom_id))
+        (
+            chatroom_id,
+            name_map.get(chatroom_id, chatroom_id),
+            metadata.get(chatroom_id, (None, 0))[0],
+            metadata.get(chatroom_id, (None, 0))[1],
+        )
         for chatroom_id in sorted(chatroom_ids)
     ]
 
