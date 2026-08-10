@@ -28,6 +28,14 @@
             <p>数据仅存储在本地，不上传任何信息</p>
         </footer>
     </div>
+    <script>
+        document.body.addEventListener("htmx:beforeSwap", function(event) {
+            if (event.detail.xhr.status >= 400 && event.detail.xhr.status < 600) {
+                event.detail.shouldSwap = true;
+                event.detail.isError = false;
+            }
+        });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

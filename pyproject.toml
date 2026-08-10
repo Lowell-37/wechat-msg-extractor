@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wechat-msg-extractor"
+version = "0.1.0"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "jinja2==3.1.4",
+  "openpyxl==3.1.5",
+  "psutil==6.1.1",
+  "pymem==1.14.0",
+  "sqlcipher3==0.6.2",
+  "pyyaml==6.0.2",
+  "python-multipart==0.0.19",
+  "httpx>=0.27,<1",
+  "pysilk==0.0.1",
+  "pycryptodomex>=3.20,<4",
+  "pywxdump",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.12,<1"]
+
+[tool.setuptools]
+py-modules = ["app", "config"]
+
+[tool.setuptools.packages.find]
+include = ["core*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+  "B",
+  "BLE",
+  "DTZ",
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "RUF",
+  "S",
+  "TRY",
+  "UP",
+]
+# Chinese UI copy intentionally uses full-width punctuation; Ruff's ambiguous-
+# character rules are not actionable for this localized application.
+# TRY003 would require a broad exception-hierarchy redesign outside this final
+# stabilization wave; explicit domain exceptions remain enabled where present.
+ignore = ["RUF001", "RUF002", "RUF003", "TRY003"]
+
+[tool.ruff.lint.per-file-ignores]
+# These are pre-existing legacy findings. Keep exceptions scoped to the exact
+# files and rules reported by the P0 baseline; new files remain fully checked.
+"tests/**/*.py" = ["S101"]
+"config.py" = ["I001", "UP006", "UP015", "UP035", "UP045"]
+"core/ai_analyzer.py" = ["BLE001"]
+"core/db_decryptor.py" = ["F401", "I001", "UP006", "UP035"]
+"core/key_extractor.py" = ["BLE001", "I001", "S110", "S112", "TRY300", "UP045"]
+"core/matcher.py" = ["F401", "UP006", "UP035", "UP045"]
+"core/message_fetcher.py" = ["BLE001", "DTZ001", "DTZ006", "F401", "UP006", "UP035"]
+"core/scanner.py" = ["B007", "BLE001", "F401", "I001", "RUF012", "UP006", "UP035", "UP045"]
+"core/task_parser.py" = ["DTZ001", "DTZ011", "I001", "UP006", "UP035", "UP045"]
+"core/validation.py" = ["UP035"]
+"core/voice.py" = ["BLE001", "DTZ006", "F401", "S110", "UP006", "UP035"]
+"tests/test_matcher.py" = ["F401", "I001", "RUF005"]
+"tests/test_message_fetcher.py" = ["DTZ006", "F401", "I001", "TRY002"]
+"tests/test_task_parser.py" = ["DTZ001", "F401", "I001"]
+"tests/test_validation.py" = ["F401"]

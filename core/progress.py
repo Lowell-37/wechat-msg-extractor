@@ -1,6 +1,8 @@
 import asyncio
-from typing import AsyncGenerator
+import json
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -8,42 +10,51 @@ class ProgressEvent:
     stage: str
     message: str
     progress: int  # 0-100
-    detail: dict = field(default_factory=dict)
+    detail: dict[str, Any] = field(default_factory=dict)
 
 
 class ProgressHub:
-    def __init__(self):
-        self._listeners: dict[str, asyncio.Queue] = {}
+    def __init__(self) -> None:
+        self._listeners: dict[str, asyncio.Queue[ProgressEvent]] = {}
 
-    def register(self, session_id: str) -> asyncio.Queue:
-        queue = asyncio.Queue()
-        self._listeners[session_id] = queue
+    def register(self, job_id: str) -> asyncio.Queue[ProgressEvent]:
+        queue: asyncio.Queue[ProgressEvent] = asyncio.Queue()
+        self._listeners[job_id] = queue
         return queue
 
-    def unregister(self, session_id: str):
-        self._listeners.pop(session_id, None)
+    def unregister(self, job_id: str) -> None:
+        self._listeners.pop(job_id, None)
 
-    async def emit(self, session_id: str, event: ProgressEvent):
-        queue = self._listeners.get(session_id)
+    def clear(self) -> None:
+        self._listeners.clear()
+
+    async def emit(self, job_id: str, event: ProgressEvent) -> None:
+        queue = self._listeners.get(job_id)
         if queue:
             await queue.put(event)
 
-    async def event_stream(self, session_id: str) -> AsyncGenerator[str, None]:
-        # 如果已有 queue 则复用（预注册场景），否则新建
-        if session_id not in self._listeners:
-            self.register(session_id)
-        queue = self._listeners[session_id]
+    async def event_stream(self, job_id: str) -> AsyncGenerator[str, None]:
+        if job_id not in self._listeners:
+            self.register(job_id)
+        queue = self._listeners[job_id]
         try:
             while True:
                 event = await queue.get()
-                yield f"data: {event.stage}|{event.message}|{event.progress}\n\n"
+                payload = json.dumps(
+                    {
+                        "stage": event.stage,
+                        "message": event.message,
+                        "progress": event.progress,
+                        "detail": event.detail,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                yield f"data: {payload}\n\n"
                 if event.stage in ("done", "error"):
                     break
-        except asyncio.CancelledError:
-            pass
         finally:
-            self.unregister(session_id)
+            self.unregister(job_id)
 
 
-# Global instance
 progress_hub = ProgressHub()
