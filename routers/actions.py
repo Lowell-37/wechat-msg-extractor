@@ -560,11 +560,18 @@ def _get_chatrooms(
     chatroom_ids: set[str] = set()
     metadata: dict[str, tuple[int | None, int]] = {}
     try:
-        rows = ddb.execute(
+        metadata_sql = (
             "SELECT StrTalker, MAX(CreateTime) AS LastMessageAt, "
             "COUNT(*) AS MessageCount FROM MSG "
             "WHERE StrTalker LIKE '%@chatroom' GROUP BY StrTalker"
         )
+        execute_per_shard = getattr(ddb, "execute_per_shard", None)
+        shard_results = (
+            execute_per_shard(metadata_sql)
+            if callable(execute_per_shard)
+            else [ddb.execute(metadata_sql)]
+        )
+        rows = (row for shard_rows in shard_results for row in shard_rows)
         for row in rows:
             chatroom_id = row["StrTalker"]
             if chatroom_id:

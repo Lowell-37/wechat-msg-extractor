@@ -286,6 +286,15 @@ def test_preview_uses_validated_selection_and_pushes_step_three(connected_client
     assert 'hx-get="/wizard/2/partial"' in back_action
     assert 'hx-target="#wizard-workspace"' in back_action
 
+    back = connected_client.get(
+        "/wizard/2/partial", headers={"HX-Request": "true"}
+    )
+
+    assert back.status_code == 200
+    assert "<!DOCTYPE html>" not in back.text
+    assert back.headers["HX-Push-Url"] == "/wizard/2"
+    assert 'data-next-enabled="true"' in back.text
+
 
 def test_filtered_selection_uses_stable_validated_state_for_preview(
     connected_client,
@@ -304,21 +313,35 @@ def test_filtered_selection_uses_stable_validated_state_for_preview(
         "/api/catalog",
         params={"query": "运营", "group_id": "room-1", "sheet_name": "项目群"},
     )
-    preview = connected_client.post(
-        "/api/preview",
-        data={"selection_source": "wizard"},
-    )
     cleared = connected_client.get(
         "/api/catalog",
         params={"query": "", "group_id": "room-1", "sheet_name": "项目群"},
     )
+    revalidated = connected_client.post(
+        "/api/selection",
+        data={
+            "group_id": "room-1",
+            "group_name": "项目群",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-03",
+            "sheet_name": "项目群",
+        },
+    )
+    preview = connected_client.post(
+        "/api/preview",
+        data={"selection_source": "wizard"},
+    )
+    state = app_module.session_state[connected_client.cookies["session_id"]]
 
     assert 'type="hidden" name="group_id" value="room-1"' in selected.text
     assert 'type="hidden" name="sheet_name" value="项目群"' in selected.text
     assert 'data-group-name="项目群"' not in filtered.text
+    assert 'value="room-1" checked' in cleared.text
+    assert revalidated.status_code == 200
+    assert 'data-next-enabled="true"' in revalidated.text
+    assert state["wizard"].selection.group_id == "room-1"
     assert preview.status_code == 200
     assert preview.headers["HX-Push-Url"] == "/wizard/3"
-    assert 'value="room-1" checked' in cleared.text
 
 
 def test_search_replacement_rows_use_stable_delegated_selection_contract(
@@ -326,13 +349,25 @@ def test_search_replacement_rows_use_stable_delegated_selection_contract(
 ):
     step = connected_client.get("/wizard/2")
     rows = connected_client.get("/api/catalog", params={"query": "运营"})
-    script = connected_client.get("/static/wizard.js")
+    selected = connected_client.post(
+        "/api/selection",
+        data={
+            "group_id": "room-2",
+            "group_name": "运营群",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-03",
+            "sheet_name": "运营群",
+        },
+    )
+    state = app_module.session_state[connected_client.cookies["session_id"]]
 
     assert 'hx-trigger="change[event.target.matches(\'.selection-control\')]"' in step.text
     assert 'name="group_choice"' in rows.text
     assert 'name="sheet_choice"' in rows.text
-    assert 'input[name="group_id"]' in script.text
-    assert 'input[name="sheet_name"]' in script.text
+    assert selected.status_code == 200
+    assert 'data-next-enabled="true"' in selected.text
+    assert state["wizard"].selection.group_id == "room-2"
+    assert state["selected_group"] == "room-2"
 
 
 def test_successful_selection_clears_prior_announcer_error(connected_client):
