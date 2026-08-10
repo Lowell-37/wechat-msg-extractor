@@ -93,7 +93,10 @@ def test_successful_connection_enables_next_without_advancing(client, monkeypatc
     assert "连接成功" in response.text
     assert "3 个消息分片" in response.text
     assert 'hx-get="/wizard/2/partial"' in response.text
-    assert "disabled" not in response.text.split("wizard-actions", 1)[1]
+    actions = response.text.split('<div class="wizard-actions"', 1)[1].split(
+        "</div>", 1
+    )[0]
+    assert "disabled" not in actions
     assert "HX-Push-Url" not in response.headers
     session_id = client.cookies["session_id"]
     wizard = app_module.session_state[session_id]["wizard"]
@@ -120,3 +123,68 @@ def test_connection_error_is_escaped_recoverable_and_keeps_environment(
     assert "重试连接" in response.text
     assert "4.0.3" in response.text
     assert "D:/WeChat Files/demo/Msg" in response.text
+
+
+def test_partial_navigation_updates_persistent_stepper_out_of_band(client):
+    response = client.get("/wizard/1/partial")
+
+    assert 'id="wizard-stepper"' in response.text
+    assert 'hx-swap-oob="outerHTML"' in response.text
+
+
+def test_connection_and_next_navigation_refresh_stepper_state(client, monkeypatch):
+    class Result:
+        manager = object()
+        database = object()
+        shard_count = 1
+        table_count = 2
+
+    monkeypatch.setattr(app_module, "connect_wechat", lambda key=None: Result())
+    client.get("/")
+
+    connected = client.post("/api/key/extract")
+
+    assert 'id="wizard-stepper"' in connected.text
+    assert 'hx-swap-oob="outerHTML"' in connected.text
+    assert 'href="/wizard/2"' in connected.text
+    assert 'stepper-item--available' in connected.text
+
+    selected = client.get("/wizard/2/partial")
+
+    assert selected.headers["HX-Push-Url"] == "/wizard/2"
+    assert 'stepper-item--completed' in selected.text
+    assert 'stepper-item--active' in selected.text
+    assert 'href="/wizard/1"' in selected.text
+
+
+def test_connection_status_updates_a_persistent_live_region(client, monkeypatch):
+    class Result:
+        manager = object()
+        database = object()
+        shard_count = 1
+        table_count = 2
+
+    monkeypatch.setattr(app_module, "connect_wechat", lambda key=None: Result())
+    shell = client.get("/")
+
+    workspace_end = shell.text.index("</main>")
+    announcer_start = shell.text.index('id="wizard-announcer"')
+    assert announcer_start > workspace_end
+    assert 'id="wizard-announcer" class="visually-hidden" aria-live="polite"' in shell.text
+
+    response = client.post("/api/key/extract")
+
+    assert 'id="wizard-announcer"' in response.text
+    assert 'hx-swap-oob="innerHTML"' in response.text
+    assert "连接成功" in response.text
+
+
+def test_sticky_actions_do_not_have_an_overflow_trapping_shell(client):
+    response = client.get("/static/style.css")
+
+    assert response.status_code == 200
+    shell_rule = response.text.split(".app-shell {", 1)[1].split("}", 1)[0]
+    action_rule = response.text.split(".wizard-actions {", 1)[1].split("}", 1)[0]
+    assert "overflow: hidden" not in shell_rule
+    assert "position: sticky" in action_rule
+    assert "bottom: 0" in action_rule

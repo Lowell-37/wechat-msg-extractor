@@ -24,7 +24,7 @@
         </div>
     </section>
 
-    <div id="connection-status" class="connection-status" aria-live="polite" aria-atomic="true">
+    <div id="connection-status" class="connection-status">
         {% include "components/status_message.html" %}
     </div>
 
@@ -73,3 +73,13 @@
 
     {% include "components/wizard_actions.html" %}
 </section>
+{% if include_oob_updates %}
+    {% with stepper_oob = true %}
+        {% include "components/stepper.html" %}
+    {% endwith %}
+    {% if connection_status %}
+    <div id="wizard-announcer" hx-swap-oob="innerHTML">
+        <span>{{ connection_status.heading }}。{{ connection_status.label }} {{ connection_status.message }}</span>
+    </div>
+    {% endif %}
+{% endif %}

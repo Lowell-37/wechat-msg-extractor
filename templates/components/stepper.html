@@ -1,4 +1,4 @@
-<nav id="wizard-stepper" class="stepper" aria-label="提取流程">
+<nav id="wizard-stepper" class="stepper" aria-label="提取流程"{% if stepper_oob %} hx-swap-oob="outerHTML"{% endif %}>
     <ol>
         {% for item in wizard_steps %}
         <li class="stepper-item stepper-item--{{ item.status }}" aria-current="{{ 'step' if item.status == 'active' else 'false' }}">

@@ -1,3 +1,6 @@
 <div id="wizard-workspace" tabindex="-1">
     {% include step_template %}
 </div>
+{% with stepper_oob = true %}
+    {% include "components/stepper.html" %}
+{% endwith %}

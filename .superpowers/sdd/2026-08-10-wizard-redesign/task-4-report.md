@@ -74,3 +74,53 @@ pytest temp/cache locations.
 - The sandbox could not load the existing external htmx CDN during visual QA, so
   htmx network interactions were verified through FastAPI integration tests rather
   than the browser. The task adds no new remote font or image dependencies.
+
+## Fix Round 1: Persistent Stepper, Sticky Actions, and Live Announcements
+
+### Root causes and implementation
+
+- The stepper lives outside `#wizard-workspace`, but fragment and connection-action
+  responses only replaced that workspace. Fragment responses now include an
+  `hx-swap-oob="outerHTML"` stepper, and connection responses include the same OOB
+  update. Connecting exposes the available step-two link without advancing; moving
+  to step two marks step one completed/clickable and step two active.
+- `.app-shell` used `overflow: hidden`, which made it a non-scrolling sticky
+  containing block while the document body performed the actual scrolling. The
+  overflow declaration was removed, so `.wizard-actions` remains sticky to the
+  viewport scroll container.
+- Connection actions replaced the live-region ancestor together with its populated
+  content. A visually hidden `#wizard-announcer` now remains mounted in the shell;
+  action responses update only its contents via `hx-swap-oob="innerHTML"`.
+
+### RED
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m pytest tests/test_wizard_templates.py -q -p no:cacheprovider --basetemp=.test-tmp-task4-fix1-red
+```
+
+```text
+4 failed, 6 passed in 1.76s
+```
+
+The failures independently showed no OOB stepper on navigation, no OOB stepper after
+connection, no persistent announcer/OOB status payload, and the old
+`overflow: hidden` sticky trap.
+
+### GREEN / focused regressions
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m pytest tests/test_wizard_templates.py tests/test_app_routes.py tests/test_app_composition.py -q -p no:cacheprovider --basetemp=.test-tmp-task4-fix1-focused
+```
+
+```text
+41 passed in 1.72s
+```
+
+### Full verification
+
+```text
+Full pytest:   107 passed in 2.15s
+Ruff:          All checks passed!
+Jinja compile: 17 templates compiled
+diff check:    exit 0; only expected LF-to-CRLF notices
+```

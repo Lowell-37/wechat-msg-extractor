@@ -396,6 +396,7 @@ def _connection_template(
 ):
     wizard = get_wizard(state)
     context = build_wizard_context(WizardStep.CONNECT, wizard)
+    context["include_oob_updates"] = True
     context.update(
         build_connection_view_model(
             request,
