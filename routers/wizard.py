@@ -265,13 +265,19 @@ def _scan_environment(request: Request) -> dict[str, Any]:
             "warnings": [str(exc)],
         }
 
+    client_found = bool(info.version or info.install_path or info.exe_path)
+    client_label = (
+        f"版本 {info.version}"
+        if info.version
+        else "已发现微信客户端" if client_found else "未检测到微信安装"
+    )
     return {
         "items": [
             _environment_item(
                 "微信客户端",
-                f"版本 {info.version}" if info.version else "未检测到微信安装",
-                str(info.install_path or "未发现安装路径"),
-                ok=bool(info.version),
+                client_label,
+                str(info.install_path or info.exe_path or "未发现安装路径"),
+                ok=client_found,
             ),
             _environment_item(
                 "微信进程",

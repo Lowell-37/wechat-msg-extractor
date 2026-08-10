@@ -59,6 +59,34 @@ def test_connect_step_has_labeled_status_controls_and_collapsed_manual_key(clien
     assert '<details class="advanced-options" open' not in response.text
 
 
+def test_runtime_install_path_marks_client_ready_without_version(client, monkeypatch):
+    class Scanner:
+        def __init__(self, **kwargs):
+            pass
+
+        def scan(self):
+            return SimpleNamespace(
+                version=None,
+                install_path="D:/Apps/Weixin/runtime",
+                exe_path="D:/Apps/Weixin/runtime/WeChatAppEx.exe",
+                pid=2468,
+                data_dir="D:/wechat-store/xwechat_files/demo/db_storage/message",
+                errors=["检测到新版微信数据；当前版本暂不支持解密与导出"],
+            )
+
+    monkeypatch.setattr(app_module, "WeChatScanner", Scanner)
+
+    response = client.get("/")
+    client_item = response.text.split(
+        '<li class="environment-item', 1
+    )[1].split("</li>", 1)[0]
+
+    assert "已发现微信客户端" in client_item
+    assert "D:/Apps/Weixin/runtime" in client_item
+    assert "已就绪" in client_item
+    assert "未检测到微信安装" not in client_item
+
+
 def test_privacy_copy_does_not_promise_that_data_is_never_uploaded(client):
     response = client.get("/")
 
