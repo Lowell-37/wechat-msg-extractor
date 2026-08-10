@@ -118,8 +118,8 @@ def test_export_builds_voice_range_from_validated_session_dates(
     asyncio.run(scheduled[0])
     assert captured == {
         "group": "group@chatroom",
-        "start_ts": int(datetime(2026, 8, 1).timestamp()),
-        "end_ts": int(datetime(2026, 8, 3, 23, 59, 59).timestamp()),
+        "start_ts": int(datetime(2026, 8, 1).timestamp()),  # noqa: DTZ001
+        "end_ts": int(datetime(2026, 8, 3, 23, 59, 59).timestamp()),  # noqa: DTZ001
     }
 
 
@@ -251,6 +251,7 @@ def test_manual_key_route_stores_connection(monkeypatch):
     assert response.status_code == 200
     assert "验证通过" in response.text
     session_id = client.cookies["session_id"]
+    assert response.headers["content-type"].startswith("text/html")
     assert app_module.session_state[session_id]["wdb"] is Result.manager
     assert app_module.session_state[session_id]["ddb"] is connected
 
@@ -264,6 +265,7 @@ def test_connection_failure_is_html_escaped(monkeypatch):
 
     response = client.post("/api/key/validate", data={"key": "ab" * 32})
 
+    assert response.status_code == 400
     assert "&lt;unsafe&gt;" in response.text
     assert "<unsafe>" not in response.text
 
@@ -335,3 +337,274 @@ def test_stale_cookie_manual_key_post_replaces_session_cookie(monkeypatch):
     session_id = response.cookies["session_id"]
     assert session_id != "stale-session"
     assert app_module.session_state[session_id]["ddb"] is connected
+
+
+def test_wechat_status_escapes_all_scanner_values(monkeypatch):
+    hostile = '<img src=x onerror="alert(1)">&entity;'
+
+    class Scanner:
+        def __init__(self, **kwargs):
+            pass
+
+        def scan(self):
+            return type(
+                "Info",
+                (),
+                {
+                    "version": hostile,
+                    "install_path": hostile,
+                    "pid": hostile,
+                    "data_dir": hostile,
+                    "errors": [hostile],
+                },
+            )()
+
+    monkeypatch.setattr(app_module, "WeChatScanner", Scanner)
+
+    response = TestClient(app_module.app).get("/api/wechat/status")
+
+    assert response.status_code == 200
+    assert "<img" not in response.text
+    assert response.text.count("&lt;img") == 5
+
+
+def test_chatroom_list_escapes_text_and_quoted_attributes(monkeypatch, client_with_database):
+    monkeypatch.setattr(
+        app_module,
+        "_get_chatrooms",
+        lambda database: [
+            ('evil" onclick="alert(1)@chatroom', "<img src=x onerror=alert(1)>&entity;")
+        ],
+    )
+
+    response = client_with_database.get("/api/chatrooms/list")
+
+    assert response.status_code == 200
+    assert "<img" not in response.text
+    assert "&lt;img src=x onerror=alert(1)&gt;&amp;entity;" in response.text
+    assert 'data-group="evil&quot; onclick=&quot;alert(1)@chatroom"' in response.text
+    assert 'data-group="evil" onclick=' not in response.text
+
+
+def test_preview_escapes_group_sheet_and_message_content(monkeypatch, client_with_database):
+    hostile = "<img src=x onerror=alert(1)>&entity;"
+    monkeypatch.setattr(
+        app_module,
+        "_get_messages",
+        lambda *args, **kwargs: [
+            {
+                "msg_id": 1,
+                "content": f"🚩8.2 任务\n1⃣ {hostile}",
+                "timestamp": int(datetime(2026, 8, 2).timestamp()),  # noqa: DTZ001
+            }
+        ],
+    )
+
+    response = client_with_database.post(
+        "/api/preview",
+        data={
+            "group_name": hostile,
+            "sheet_name": "张三",
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-03",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<img" not in response.text
+    assert response.text.count("&lt;img src=x onerror=alert(1)&gt;&amp;entity;") == 2
+
+
+def test_query_failure_returns_escaped_server_error_fragment(monkeypatch, client_with_database):
+    def fail(database):
+        raise RuntimeError("<unsafe shard>")
+
+    monkeypatch.setattr(app_module, "_get_chatrooms", fail)
+
+    response = client_with_database.get("/api/chatrooms/list")
+
+    assert response.status_code == 500
+    assert "&lt;unsafe shard&gt;" in response.text
+    assert "<unsafe shard>" not in response.text
+
+
+def test_base_page_enables_htmx_swapping_for_error_fragments():
+    response = TestClient(app_module.app).get("/")
+
+    assert response.status_code == 200
+    assert "htmx:beforeSwap" in response.text
+    assert "detail.shouldSwap = true" in response.text
+
+
+@pytest.mark.parametrize(
+    ("route", "data", "expected_key"),
+    [
+        ("/api/key/extract", {}, None),
+        ("/api/key/validate", {"key": "ab" * 32}, "ab" * 32),
+    ],
+)
+def test_connection_routes_pass_configured_wechat_paths(
+    monkeypatch, route, data, expected_key
+):
+    calls = []
+
+    class Result:
+        manager = object()
+        database = object()
+        shard_count = 1
+        table_count = 2
+
+    def connect(key=None, **kwargs):
+        calls.append((key, kwargs))
+        return Result()
+
+    monkeypatch.setattr(app_module, "connect_wechat", connect)
+    monkeypatch.setattr(app_module.config.wechat, "version_dir", "X:/custom/version")
+    monkeypatch.setattr(app_module.config.wechat, "data_dir", "Y:/custom/data")
+
+    response = TestClient(app_module.app).post(route, data=data)
+
+    assert response.status_code == 200
+    assert calls == [
+        (
+            expected_key,
+            {"install_path": "X:/custom/version", "data_dir": "Y:/custom/data"},
+        )
+    ]
+
+
+def test_export_page_parses_json_sse_and_uses_text_content(monkeypatch, client_with_preview):
+    scheduled = []
+
+    class PendingTask:
+        def add_done_callback(self, callback):
+            pass
+
+    def capture(coroutine):
+        scheduled.append(coroutine)
+        return PendingTask()
+
+    monkeypatch.setattr(app_module.asyncio, "create_task", capture)
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "safe.xlsx"}
+    )
+
+    for coroutine in scheduled:
+        coroutine.close()
+    assert response.status_code == 200
+    assert "JSON.parse(e.data)" in response.text
+    assert ".innerHTML" not in response.text
+    assert ".textContent" in response.text
+    assert "/api/progress/stream?job_id=" in response.text
+
+
+class RunningTask:
+    def done(self):
+        return False
+
+
+def test_second_export_is_rejected_while_session_job_is_running(client_with_preview):
+    session_id = client_with_preview.cookies["session_id"]
+    app_module.export_tasks["busy-job"] = RunningTask()
+    app_module.session_jobs[session_id] = "busy-job"
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "second.xlsx"}
+    )
+
+    assert response.status_code == 409
+    assert "导出任务正在进行" in response.text
+
+
+def test_reconnect_is_rejected_while_session_job_is_running(monkeypatch, client_with_preview):
+    calls = []
+    session_id = client_with_preview.cookies["session_id"]
+    app_module.export_tasks["busy-job"] = RunningTask()
+    app_module.session_jobs[session_id] = "busy-job"
+    monkeypatch.setattr(app_module, "connect_wechat", lambda *args, **kwargs: calls.append(True))
+
+    response = client_with_preview.post("/api/key/validate", data={"key": "ab" * 32})
+
+    assert response.status_code == 409
+    assert "导出任务正在进行" in response.text
+    assert calls == []
+
+
+def test_export_job_snapshots_mutable_session_inputs(monkeypatch, client_with_preview):
+    jobs = []
+    closed = []
+
+    class FakeWriter:
+        def __init__(self, template_path):
+            pass
+
+        def get_sheet_names(self):
+            return ["张三"]
+
+        def close(self):
+            closed.append(True)
+
+    def reject_fallback_scheduler(coroutine):
+        coroutine.close()
+        raise AssertionError("route bypassed retained job scheduler")
+
+    monkeypatch.setattr(app_module, "ExcelWriter", FakeWriter)
+    monkeypatch.setattr(app_module, "_start_export_job", jobs.append, raising=False)
+    monkeypatch.setattr(app_module.asyncio, "create_task", reject_fallback_scheduler)
+    session_id = client_with_preview.cookies["session_id"]
+    state = app_module.session_state[session_id]
+    state["analysis_by_date"] = {"2026-08-02": ["original context"]}
+
+    response = client_with_preview.post(
+        "/api/export", data={"sheet_name": "张三", "output_path": "snapshot.xlsx"}
+    )
+
+    assert response.status_code == 200
+    assert len(jobs) == 1
+    job = jobs[0]
+    state["parsed_tasks"][0].tasks.append("late mutation")
+    state["analysis_by_date"]["2026-08-02"].append("late context")
+    state["selected_group"] = "different@chatroom"
+    assert job.session_id == session_id
+    assert job.group == "group@chatroom"
+    assert job.parsed_tasks[0].tasks == ("测试任务",)
+    assert job.analysis_by_date == (("2026-08-02", ("original context",)),)
+    assert closed == [True]
+
+
+def test_replacing_connection_disposes_old_workflow_state(monkeypatch):
+    class PreviousDatabase:
+        def __init__(self):
+            self.closed = 0
+
+        def close_all(self):
+            self.closed += 1
+
+    previous = PreviousDatabase()
+    connected = object()
+
+    class Result:
+        manager = object()
+        database = connected
+        shard_count = 1
+        table_count = 2
+
+    monkeypatch.setattr(app_module, "connect_wechat", lambda *args, **kwargs: Result())
+    client = TestClient(app_module.app)
+    client.get("/")
+    session_id = client.cookies["session_id"]
+    old_state = app_module.session_state[session_id]
+    old_state["ddb"] = previous
+    old_state["selected_group"] = "stale@chatroom"
+    old_state["parsed_tasks"] = [object()]
+
+    response = client.post("/api/key/validate", data={"key": "ab" * 32})
+
+    assert response.status_code == 200
+    new_state = app_module.session_state[session_id]
+    assert new_state is not old_state
+    assert new_state["ddb"] is connected
+    assert new_state["selected_group"] is None
+    assert new_state["parsed_tasks"] == []
+    assert previous.closed == 1

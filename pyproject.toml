@@ -38,28 +38,42 @@ testpaths = ["tests"]
 target-version = "py311"
 line-length = 100
 
+[tool.ruff.lint]
+select = [
+  "B",
+  "BLE",
+  "DTZ",
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "RUF",
+  "S",
+  "TRY",
+  "UP",
+]
+# Chinese UI copy intentionally uses full-width punctuation; Ruff's ambiguous-
+# character rules are not actionable for this localized application.
+# TRY003 would require a broad exception-hierarchy redesign outside this final
+# stabilization wave; explicit domain exceptions remain enabled where present.
+ignore = ["RUF001", "RUF002", "RUF003", "TRY003"]
+
 [tool.ruff.lint.per-file-ignores]
 # These are pre-existing legacy findings. Keep exceptions scoped to the exact
 # files and rules reported by the P0 baseline; new files remain fully checked.
-"app.py" = ["BLE001", "DTZ001", "DTZ006", "DTZ011", "F401", "I001", "RUF059", "S110"]
-"config.py" = ["I001", "UP006", "UP035", "UP045"]
+"tests/**/*.py" = ["S101"]
+"config.py" = ["I001", "UP006", "UP015", "UP035", "UP045"]
 "core/ai_analyzer.py" = ["BLE001"]
-"core/connection.py" = ["BLE001", "S110"]
 "core/db_decryptor.py" = ["F401", "I001", "UP006", "UP035"]
-"core/dbutils.py" = ["BLE001", "F401", "I001", "S110", "UP006", "UP034", "UP035", "UP045"]
-"core/excel_writer.py" = ["I001", "UP006", "UP035"]
-"core/key_extractor.py" = ["BLE001", "I001", "S110", "S112", "UP045"]
+"core/key_extractor.py" = ["BLE001", "I001", "S110", "S112", "TRY300", "UP045"]
 "core/matcher.py" = ["F401", "UP006", "UP035", "UP045"]
 "core/message_fetcher.py" = ["BLE001", "DTZ001", "DTZ006", "F401", "UP006", "UP035"]
-"core/progress.py" = ["I001", "UP035"]
-"core/scanner.py" = ["BLE001", "F401", "I001", "RUF012", "UP006", "UP035", "UP045"]
+"core/scanner.py" = ["B007", "BLE001", "F401", "I001", "RUF012", "UP006", "UP035", "UP045"]
 "core/task_parser.py" = ["DTZ001", "DTZ011", "I001", "UP006", "UP035", "UP045"]
 "core/validation.py" = ["UP035"]
 "core/voice.py" = ["BLE001", "DTZ006", "F401", "S110", "UP006", "UP035"]
-"tests/test_app_routes.py" = ["DTZ001"]
-"tests/test_excel_writer.py" = ["I001"]
-"tests/test_matcher.py" = ["F401", "I001"]
+"tests/test_matcher.py" = ["F401", "I001", "RUF005"]
 "tests/test_message_fetcher.py" = ["DTZ006", "F401", "I001", "TRY002"]
-"tests/test_project_metadata.py" = ["I001"]
 "tests/test_task_parser.py" = ["DTZ001", "F401", "I001"]
 "tests/test_validation.py" = ["F401"]

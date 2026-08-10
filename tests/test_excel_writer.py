@@ -1,10 +1,12 @@
 import os
 import tempfile
-import pytest
 from datetime import date
+
+import openpyxl
+import pytest
+
 from core.excel_writer import ExcelWriter, safe_excel_text
 from core.task_parser import ParsedTask
-import openpyxl
 
 
 @pytest.fixture
@@ -125,3 +127,28 @@ class TestExcelWriter:
         writer.close()
 
         assert (tmp_path / "output.xlsx").exists()
+
+    def test_existing_date_has_one_row_and_escaped_formula_after_reopen(
+        self, temp_template, parsed_task, tmp_path
+    ):
+        output_path = tmp_path / "persisted.xlsx"
+        writer = ExcelWriter(temp_template)
+
+        first_row = writer.add_task("张三", parsed_task, '=HYPERLINK("bad")')
+        second_row = writer.add_task("张三", parsed_task, '=HYPERLINK("bad")')
+        writer.save(str(output_path))
+        writer.close()
+
+        reopened = openpyxl.load_workbook(output_path, data_only=False)
+        sheet = reopened["张三"]
+        matching_rows = [
+            row
+            for row in range(2, sheet.max_row + 1)
+            if sheet.cell(row=row, column=1).value.date() == parsed_task.date
+        ]
+        assert first_row == second_row == 2
+        assert matching_rows == [2]
+        assert sheet.max_row == 2
+        assert sheet["C2"].value == "'=HYPERLINK(\"bad\")"
+        assert sheet["C2"].data_type == "s"
+        reopened.close()

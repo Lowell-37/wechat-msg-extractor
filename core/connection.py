@@ -22,7 +22,7 @@ def _close_shards(shards: list[Any]) -> None:
     for shard in shards:
         try:
             shard.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - best-effort cleanup continues
             pass
 
 
@@ -39,9 +39,17 @@ def _table_count(rows: list[Any]) -> int:
         return int(row[0])
 
 
-def connect_wechat(key: str | None = None) -> ConnectedWechat:
+def connect_wechat(
+    key: str | None = None,
+    *,
+    install_path: str | None = None,
+    data_dir: str | None = None,
+) -> ConnectedWechat:
     """Connect to and validate every available WeChat message database shard."""
-    manager = WeChatDB()
+    manager_kwargs = {}
+    if install_path is not None or data_dir is not None:
+        manager_kwargs = {"install_path": install_path, "data_dir": data_dir}
+    manager = WeChatDB(**manager_kwargs)
     try:
         success, message = (
             manager.scan_and_extract()

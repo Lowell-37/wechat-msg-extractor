@@ -1,7 +1,7 @@
 import os
 from datetime import date, datetime
 from pathlib import Path
-from typing import List
+
 import openpyxl
 from openpyxl.utils.datetime import from_excel
 
@@ -61,5 +61,5 @@ class ExcelWriter:
     def close(self):
         self._wb.close()
 
-    def get_sheet_names(self) -> List[str]:
+    def get_sheet_names(self) -> list[str]:
         return self._wb.sheetnames

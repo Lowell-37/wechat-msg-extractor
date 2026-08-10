@@ -87,6 +87,80 @@ def test_successful_connection_leaves_shards_open_for_merged_database(monkeypatc
     assert closed == []
 
 
+def test_connection_verifies_sqlite_master_and_msg_on_every_shard(monkeypatch):
+    calls = [[], []]
+
+    class FakeShard:
+        def __init__(self, index):
+            self.index = index
+
+        def execute(self, sql, params=()):
+            calls[self.index].append((sql, params))
+            return [{"n": self.index + 1}]
+
+        def close(self):
+            pass
+
+    class FakeDB:
+        def scan_and_extract(self):
+            return True, "ok"
+
+        def open_all_msg_dbs(self):
+            return [FakeShard(0), FakeShard(1)]
+
+    monkeypatch.setattr("core.connection.WeChatDB", FakeDB)
+
+    result = connect_wechat()
+
+    expected = [
+        ("SELECT count(*) as n FROM sqlite_master", ()),
+        ("SELECT count(*) as n FROM MSG LIMIT 1", ()),
+    ]
+    assert calls == [expected, expected]
+    assert result.table_count == 3
+
+
+def test_connect_wechat_passes_custom_paths_to_database_manager(monkeypatch):
+    constructor_calls = []
+
+    class FakeShard:
+        def execute(self, sql, params=()):
+            return [{"n": 1}]
+
+        def close(self):
+            pass
+
+    class FakeDB:
+        def __init__(self, install_path=None, data_dir=None):
+            constructor_calls.append((install_path, data_dir))
+
+        def scan_and_extract(self):
+            return True, "ok"
+
+        def open_all_msg_dbs(self):
+            return [FakeShard()]
+
+    monkeypatch.setattr("core.connection.WeChatDB", FakeDB)
+
+    connect_wechat(install_path="X:/wechat/version", data_dir="Y:/wechat/data")
+
+    assert constructor_calls == [("X:/wechat/version", "Y:/wechat/data")]
+
+
+def test_wechat_database_builds_scanner_with_custom_paths(monkeypatch):
+    calls = []
+
+    class Scanner:
+        def __init__(self, install_path=None, data_dir=None):
+            calls.append((install_path, data_dir))
+
+    monkeypatch.setattr("core.dbutils.WeChatScanner", Scanner)
+
+    WeChatDB(install_path="X:/wechat/version", data_dir="Y:/wechat/data")
+
+    assert calls == [("X:/wechat/version", "Y:/wechat/data")]
+
+
 def test_open_all_msg_dbs_closes_opened_shards_on_later_open_failure(monkeypatch, tmp_path):
     data_dir = tmp_path / "Msg"
     data_dir.mkdir()

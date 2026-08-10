@@ -7,12 +7,10 @@ WeChat 数据库使用自定义 AES-CBC 加密，非标准 SQLCipher。
 import hashlib
 import hmac
 import os
-import shutil
 import sqlite3
 import tempfile
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+
 from Cryptodome.Cipher import AES
 
 from core.scanner import WeChatScanner
@@ -20,6 +18,10 @@ from core.scanner import WeChatScanner
 SQLITE_FILE_HEADER = "SQLite format 3\x00"
 KEY_SIZE = 32
 DEFAULT_PAGESIZE = 4096
+
+
+class ShardQueryError(RuntimeError):
+    """Raised when any message shard cannot complete a merged query."""
 
 
 def decrypt_db_raw(key_hex: str, db_path: str, out_path: str) -> bool:
@@ -49,7 +51,7 @@ def decrypt_db_raw(key_hex: str, db_path: str, out_path: str) -> bool:
     hash_mac = hmac.new(mac_key, blist[16:4064], hashlib.sha1)
     hash_mac.update(b'\x01\x00\x00\x00')
 
-    expected_mac = first[-32:-12] if len((first := blist[16:4096])) >= 32 else b''
+    expected_mac = first[-32:-12] if len(first := blist[16:4096]) >= 32 else b''
     if hash_mac.digest() != expected_mac:
         return False
 
@@ -82,7 +84,7 @@ class DecryptedDB:
     temp_path: str
     conn: sqlite3.Connection
 
-    def execute(self, sql: str, params: tuple = ()) -> List[tuple]:
+    def execute(self, sql: str, params: tuple = ()) -> list[tuple]:
         cursor = self.conn.cursor()
         cursor.execute(sql, params)
         return cursor.fetchall()
@@ -92,33 +94,36 @@ class DecryptedDB:
         if os.path.exists(self.temp_path):
             try:
                 os.unlink(self.temp_path)
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 - best-effort plaintext cleanup
                 pass
 
 
 class MergedMsgDB:
     """管理多个分片 MSG 数据库，提供统一的查询接口。"""
 
-    def __init__(self, dbs: List[DecryptedDB]):
+    def __init__(self, dbs: list[DecryptedDB]):
         self._dbs = dbs
 
-    def execute_all(self, sql: str, params: tuple = ()) -> List[tuple]:
+    def execute_all(self, sql: str, params: tuple = ()) -> list[tuple]:
         """在所有分片数据库上执行查询并合并结果。"""
         all_rows = []
         seen = set()
-        for db in self._dbs:
+        for index, db in enumerate(self._dbs, start=1):
             try:
                 rows = db.execute(sql, params)
-                for row in rows:
-                    key = tuple(row) if isinstance(row, (list, tuple)) else (row,)
-                    if key not in seen:
-                        seen.add(key)
-                        all_rows.append(row)
-            except Exception:
-                pass
+            except Exception as exc:
+                path = getattr(db, "original_path", "<unknown>")
+                raise ShardQueryError(
+                    f"query failed on shard {index}/{len(self._dbs)} ({path}): {exc}"
+                ) from exc
+            for row in rows:
+                key = tuple(row) if isinstance(row, (list, tuple)) else (row,)
+                if key not in seen:
+                    seen.add(key)
+                    all_rows.append(row)
         return all_rows
 
-    def execute(self, sql: str, params: tuple = ()) -> List[tuple]:
+    def execute(self, sql: str, params: tuple = ()) -> list[tuple]:
         """别名，便于替换旧接口。"""
         return self.execute_all(sql, params)
 
@@ -126,7 +131,7 @@ class MergedMsgDB:
         for db in self._dbs:
             try:
                 db.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 - best-effort shard cleanup
                 pass
 
     @property
@@ -141,12 +146,16 @@ class MergedMsgDB:
 class WeChatDB:
     """微信数据库管理器：自动检测、提取密钥、解密、查询。"""
 
-    def __init__(self):
-        self._scanner = WeChatScanner()
+    def __init__(
+        self,
+        install_path: str | None = None,
+        data_dir: str | None = None,
+    ):
+        self._scanner = WeChatScanner(install_path=install_path, data_dir=data_dir)
         self._info = None
         self._key = None
 
-    def scan_and_extract(self) -> Tuple[bool, str]:
+    def scan_and_extract(self) -> tuple[bool, str]:
         """扫描微信环境并提取密钥。返回 (成功, 消息)"""
         self._info = self._scanner.scan()
         errors = []
@@ -167,7 +176,7 @@ class WeChatDB:
         self._key = wx_infos[0]['key']
         return True, self._key
 
-    def scan_and_use_key(self, key_hex: str) -> Tuple[bool, str]:
+    def scan_and_use_key(self, key_hex: str) -> tuple[bool, str]:
         """Scan for WeChat data and prepare a user-supplied database key."""
         from core.validation import validate_hex_key
 
@@ -178,12 +187,12 @@ class WeChatDB:
         self._key = validate_hex_key(key_hex)
         return True, "密钥已接受"
 
-    def open_msg_db(self) -> Optional[DecryptedDB]:
+    def open_msg_db(self) -> DecryptedDB | None:
         """解密并打开第一个 MSG 数据库（兼容旧接口）。"""
         all_dbs = self.open_all_msg_dbs()
         return all_dbs[0] if all_dbs else None
 
-    def open_all_msg_dbs(self) -> List[DecryptedDB]:
+    def open_all_msg_dbs(self) -> list[DecryptedDB]:
         """解密并打开所有 MSG 分片数据库。返回列表。"""
         if not self._key or not self._info:
             return []
@@ -218,7 +227,7 @@ class WeChatDB:
                     temp_fd = None
                     success = decrypt_db_raw(self._key, db_path, temp_path)
                     if not success:
-                        raise RuntimeError("message database decryption failed")
+                        raise RuntimeError("message database decryption failed")  # noqa: TRY301
                     conn = sqlite3.connect(temp_path)
                     conn.row_factory = sqlite3.Row
                     dbs.append(DecryptedDB(
@@ -231,30 +240,30 @@ class WeChatDB:
                     if temp_fd is not None:
                         try:
                             os.close(temp_fd)
-                        except Exception:
+                        except Exception:  # noqa: BLE001, S110 - cleanup continues
                             pass
                     if conn is not None:
                         try:
                             conn.close()
-                        except Exception:
+                        except Exception:  # noqa: BLE001, S110 - cleanup continues
                             pass
                     try:
                         if temp_path:
                             os.unlink(temp_path)
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110 - cleanup continues
                         pass
                     raise
         except Exception:
             for db in dbs:
                 try:
                     db.close()
-                except Exception:
+                except Exception:  # noqa: BLE001, S110 - cleanup continues
                     pass
             raise
 
         return dbs
 
-    def get_key(self) -> Optional[str]:
+    def get_key(self) -> str | None:
         return self._key
 
     def get_info(self):
