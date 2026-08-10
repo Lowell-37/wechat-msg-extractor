@@ -1,0 +1,58 @@
+<section id="export-progress"
+         class="export-progress export-progress--{{ export_state }}"
+         data-export-state="{{ export_state }}"
+         data-job-id="{{ job_id }}"
+         {% if job_id %}data-progress-url="/api/progress/stream?job_id={{ job_id }}"{% endif %}
+         aria-live="polite">
+    <div class="export-progress__heading">
+        <div>
+            <p class="eyebrow" data-progress-phase>
+                {% if export_state == "failed" %}导出未完成{% else %}导出进行中{% endif %}
+            </p>
+            <h2 data-progress-message>{{ progress_message }}</h2>
+        </div>
+        <strong data-progress-percent>{{ progress }}%</strong>
+    </div>
+    <div class="progress-bar"
+         role="progressbar"
+         aria-label="导出进度"
+         aria-valuemin="0"
+         aria-valuemax="100"
+         aria-valuenow="{{ progress }}">
+        <div class="progress-fill" data-progress-fill style="width:{{ progress }}%"></div>
+    </div>
+
+    <div class="export-complete" data-export-complete {% if export_state != "complete" %}hidden{% endif %}>
+        <p class="status-ok">导出完成</p>
+        <p>文件保存在：<code data-output-path></code></p>
+        <a class="btn btn-secondary"
+           href="/wizard/3"
+           hx-get="/wizard/3/partial"
+           hx-target="#wizard-workspace"
+           hx-swap="outerHTML">返回修改</a>
+    </div>
+
+    <form class="export-retry-form"
+          data-export-retry
+          {% if export_state != "failed" %}hidden{% endif %}
+          hx-post="/api/export"
+          hx-target="#export-result"
+          hx-swap="innerHTML">
+        <input type="hidden" name="task_selection_present" value="true">
+        {% for selected_id in retry_values.task_ids %}
+        <input type="hidden" name="task_id" value="{{ selected_id }}">
+        {% endfor %}
+        <input type="hidden" name="output_path" value="{{ retry_values.output_path }}">
+        <input type="hidden" name="sheet_name" value="{{ retry_values.sheet_name }}">
+        {% if retry_values.enable_ai %}
+        <input type="hidden" name="enable_ai" value="true">
+        {% endif %}
+        {% if retry_values.enable_voice %}
+        <input type="hidden" name="enable_voice" value="true">
+        {% endif %}
+        {% if retry_values.privacy_acknowledged %}
+        <input type="hidden" name="privacy_acknowledged" value="true">
+        {% endif %}
+        <button class="btn btn-primary" type="submit">重试导出</button>
+    </form>
+</section>

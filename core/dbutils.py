@@ -89,6 +89,12 @@ class DecryptedDB:
         cursor.execute(sql, params)
         return cursor.fetchall()
 
+    def execute_per_shard(
+        self, sql: str, params: tuple = ()
+    ) -> list[list[tuple]]:
+        """Execute against this single database using the merged-db interface."""
+        return [self.execute(sql, params)]
+
     def close(self):
         self.conn.close()
         if os.path.exists(self.temp_path):
@@ -108,6 +114,19 @@ class MergedMsgDB:
         """在所有分片数据库上执行查询并合并结果。"""
         all_rows = []
         seen = set()
+        for rows in self.execute_per_shard(sql, params):
+            for row in rows:
+                key = tuple(row) if isinstance(row, (list, tuple)) else (row,)
+                if key not in seen:
+                    seen.add(key)
+                    all_rows.append(row)
+        return all_rows
+
+    def execute_per_shard(
+        self, sql: str, params: tuple = ()
+    ) -> list[list[tuple]]:
+        """Return raw results grouped by shard without cross-shard deduplication."""
+        shard_results = []
         for index, db in enumerate(self._dbs, start=1):
             try:
                 rows = db.execute(sql, params)
@@ -116,12 +135,8 @@ class MergedMsgDB:
                 raise ShardQueryError(
                     f"query failed on shard {index}/{len(self._dbs)} ({path}): {exc}"
                 ) from exc
-            for row in rows:
-                key = tuple(row) if isinstance(row, (list, tuple)) else (row,)
-                if key not in seen:
-                    seen.add(key)
-                    all_rows.append(row)
-        return all_rows
+            shard_results.append(rows)
+        return shard_results
 
     def execute(self, sql: str, params: tuple = ()) -> list[tuple]:
         """别名，便于替换旧接口。"""

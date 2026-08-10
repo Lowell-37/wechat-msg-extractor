@@ -1,0 +1,11 @@
+{% for option in options %}
+<div class="chatroom-item" onclick="select(this)"
+     data-group="{{ option.chat_id }}" data-sheet="{{ option.suggested_sheet }}">
+    <span class="chatroom-name">{{ option.display_name }}</span>
+    <span class="chatroom-sheet {{ 'matched' if option.suggested_sheet else 'unmatched' }}">
+        {% if option.suggested_sheet %}{{ option.suggested_sheet }}{% else %}未匹配{% endif %}
+    </span>
+</div>
+{% else %}
+<p>无匹配群聊</p>
+{% endfor %}

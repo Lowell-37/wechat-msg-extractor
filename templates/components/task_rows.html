@@ -1,0 +1,26 @@
+{% for group in task_groups %}
+<section class="task-date-group" aria-labelledby="task-date-{{ loop.index }}">
+    <div class="task-date-heading">
+        <h3 id="task-date-{{ loop.index }}">{{ group.date }}</h3>
+        <span>{{ group.rows|length }} 条</span>
+    </div>
+    <div class="task-rows">
+        {% for row in group.rows %}
+        <label class="task-row" for="task-{{ row.id }}">
+            <input id="task-{{ row.id }}"
+                   type="checkbox"
+                   name="task_id"
+                   value="{{ row.id }}"
+                   {% if row.selected %}checked{% endif %}>
+            <span class="task-row__content">
+                {% for item in row.task.tasks %}
+                <span>{{ item }}</span>
+                {% endfor %}
+            </span>
+        </label>
+        {% endfor %}
+    </div>
+</section>
+{% else %}
+<p class="empty-state">当前范围内没有识别到任务。</p>
+{% endfor %}

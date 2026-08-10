@@ -1,0 +1,24 @@
+<ul class="environment-list" aria-label="微信环境检测结果">
+    {% for item in environment_items %}
+    <li class="environment-item environment-item--{{ item.tone }}">
+        <span class="environment-icon" aria-hidden="true">{{ item.icon }}</span>
+        <span class="environment-copy">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }}</span>
+            {% if item.detail %}<small>{{ item.detail }}</small>{% endif %}
+        </span>
+        <span class="environment-state">{{ item.state_text }}</span>
+    </li>
+    {% else %}
+    <li class="environment-item environment-item--pending">
+        <span class="environment-icon" aria-hidden="true">…</span>
+        <span class="environment-copy"><strong>环境检测</strong><span>正在读取本机信息</span></span>
+        <span class="environment-state">检测中</span>
+    </li>
+    {% endfor %}
+</ul>
+{% if environment_warnings %}
+<div class="environment-warnings" role="status">
+    {% for warning in environment_warnings %}<p>⚠ {{ warning }}</p>{% endfor %}
+</div>
+{% endif %}

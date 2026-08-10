@@ -1,0 +1,35 @@
+<h3>导出进度</h3>
+<div id="progress-area" style="display:block;">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <p id="progress-message">正在准备导出...</p>
+</div>
+<div id="export-success"></div>
+<script>
+var es = new EventSource("/api/progress/stream?job_id={{ job_id }}");
+es.onmessage = function(e) {
+  var payload = JSON.parse(e.data);
+  var stage = payload.stage, msg = payload.message, pct = payload.progress;
+  document.getElementById("progress-fill").style.width = pct + "%";
+  document.getElementById("progress-message").textContent = msg;
+  if (stage === "done") {
+    es.close();
+    document.getElementById("progress-fill").style.background = "var(--success)";
+    var success = document.getElementById("export-success");
+    success.textContent = "";
+    var status = document.createElement("p");
+    status.className = "status-ok";
+    status.textContent = "✔ 导出成功！";
+    success.appendChild(status);
+    var path = document.createElement("p");
+    path.append("文件保存在：");
+    var code = document.createElement("code");
+    code.textContent = msg.replace("导出完成！文件保存在：", "");
+    path.appendChild(code);
+    success.appendChild(path);
+  } else if (stage === "error") {
+    es.close();
+    document.getElementById("progress-fill").style.background = "#e74c3c";
+  }
+};
+es.onerror = function() { es.close(); };
+</script>

@@ -1,10 +1,83 @@
 import os
 import sqlite3
 import tempfile
+from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
 import app as app_module
+from core.dbutils import MergedMsgDB
+
+
+class AggregateRow(tuple):
+    _columns: ClassVar = {
+        "StrTalker": 0,
+        "LastMessageAt": 1,
+        "MessageCount": 2,
+    }
+
+    def __new__(cls, chatroom_id, last_message_at, message_count):
+        return super().__new__(cls, (chatroom_id, last_message_at, message_count))
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            key = self._columns[key]
+        return super().__getitem__(key)
+
+
+def test_production_chatroom_query_returns_message_metadata(tmp_path: Path):
+    msg_path = tmp_path / "MSG0.db"
+    msg_path.touch()
+
+    class MessageDatabase:
+        original_path = str(msg_path)
+        key_hex = "ab" * 32
+
+        def execute(self, sql, params=()):
+            assert "MAX(CreateTime)" in sql
+            assert "COUNT(*)" in sql
+            return [
+                {
+                    "StrTalker": "room-1@chatroom",
+                    "LastMessageAt": 1785634100,
+                    "MessageCount": 20,
+                },
+                {
+                    "StrTalker": "room-1@chatroom",
+                    "LastMessageAt": 1785634200,
+                    "MessageCount": 22,
+                },
+            ]
+
+    assert app_module._get_chatrooms(MessageDatabase()) == [
+        ("room-1@chatroom", "room-1@chatroom", 1785634200, 42)
+    ]
+
+
+def test_identical_aggregate_rows_from_multiple_shards_are_both_counted(
+    tmp_path: Path,
+):
+    aggregate = AggregateRow("room-1@chatroom", 1785634200, 42)
+
+    class Shard:
+        key_hex = "ab" * 32
+
+        def __init__(self, path):
+            self.original_path = str(path)
+
+        def execute(self, sql, params=()):
+            assert "COUNT(*)" in sql
+            return [aggregate]
+
+    paths = [tmp_path / "MSG0.db", tmp_path / "MSG1.db"]
+    for path in paths:
+        path.touch()
+    database = MergedMsgDB([Shard(path) for path in paths])
+
+    assert app_module._get_chatrooms(database) == [
+        ("room-1@chatroom", "room-1@chatroom", 1785634200, 84)
+    ]
 
 
 @pytest.mark.parametrize("failing_query", [1, 2])
