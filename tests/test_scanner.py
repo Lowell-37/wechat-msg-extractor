@@ -32,6 +32,34 @@ def test_detect_process_accepts_supported_wechat_executable_names(
     assert info.install_path == r"D:\Apps\Weixin"
 
 
+def test_process_runtime_path_removes_only_stale_install_warning(monkeypatch):
+    process = SimpleNamespace(
+        info={
+            "pid": 2468,
+            "name": "WeChatAppEx.exe",
+            "exe": r"D:\Apps\Weixin\runtime\WeChatAppEx.exe",
+        }
+    )
+    monkeypatch.setattr(
+        "core.scanner.psutil.process_iter",
+        lambda attributes: [process],
+    )
+    compatibility_warning = (
+        "检测到新版微信 message_*.db 数据；当前版本暂不支持解密与导出"
+    )
+    info = WeChatInfo(
+        errors=[
+            r"微信安装目录不存在: C:\Program Files\Tencent\WeChat",
+            compatibility_warning,
+        ]
+    )
+
+    WeChatScanner()._detect_process(info)
+
+    assert not any(error.startswith("微信安装目录不存在:") for error in info.errors)
+    assert compatibility_warning in info.errors
+
+
 def test_xwechat_configured_storage_discovers_new_message_databases(
     monkeypatch, tmp_path
 ):

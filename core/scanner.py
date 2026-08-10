@@ -91,6 +91,11 @@ class WeChatScanner:
                         parent = os.path.basename(exe_dir)
                         if parent.startswith("[") and parent.endswith("]"):
                             info.version = parent.strip("[]")
+                        info.errors = [
+                            error
+                            for error in info.errors
+                            if not error.startswith("微信安装目录不存在:")
+                        ]
                     return
         except Exception as e:
             info.errors.append(f"查找微信进程失败: {e}")
