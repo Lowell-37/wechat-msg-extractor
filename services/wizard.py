@@ -43,6 +43,7 @@ def update_selection(
 
     wizard.selection = selection
     wizard.preview_tasks.clear()
+    wizard.selected_task_ids.clear()
     wizard.preview_ready = False
     wizard.output_path = ""
     wizard.enable_ai = False
@@ -82,11 +83,32 @@ def store_preview(wizard: WizardState, tasks: Sequence[Any]) -> None:
     """Persist a generated preview without automatically advancing the wizard."""
     if not wizard.connected or not has_complete_selection(wizard.selection):
         wizard.preview_tasks.clear()
+        wizard.selected_task_ids.clear()
         wizard.preview_ready = False
         return
 
     wizard.preview_tasks = list(tasks)
+    wizard.selected_task_ids = [
+        str(getattr(task, "msg_id", index)) for index, task in enumerate(tasks)
+    ]
     wizard.preview_ready = True
+
+
+def store_export_preferences(
+    wizard: WizardState,
+    *,
+    selected_task_ids: Sequence[str],
+    output_path: str,
+    enable_ai: bool,
+    enable_voice: bool,
+    privacy_acknowledged: bool,
+) -> None:
+    """Persist retryable export input without changing preview availability."""
+    wizard.selected_task_ids = list(dict.fromkeys(selected_task_ids))
+    wizard.output_path = output_path
+    wizard.enable_ai = enable_ai
+    wizard.enable_voice = enable_voice
+    wizard.privacy_acknowledged = privacy_acknowledged
 
 
 def step_statuses(wizard: WizardState) -> dict[WizardStep, StepStatus]:

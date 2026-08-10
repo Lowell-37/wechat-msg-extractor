@@ -110,10 +110,16 @@ def test_export_builds_voice_range_from_validated_session_dates(
     monkeypatch.setattr(app_module.asyncio, "create_task", scheduled.append)
 
     response = client_with_preview.post(
-        "/api/export", data={"sheet_name": "张三", "output_path": "result.xlsx"}
+        "/api/export",
+        data={
+            "sheet_name": "张三",
+            "output_path": "result.xlsx",
+            "enable_voice": "true",
+            "privacy_acknowledged": "true",
+        },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert len(scheduled) == 1
     asyncio.run(scheduled[0])
     assert captured == {
@@ -188,9 +194,15 @@ def test_export_warns_on_voice_failure_and_continues_text_export(
 
     with caplog.at_level(logging.WARNING, logger="app"):
         response = client_with_preview.post(
-            "/api/export", data={"sheet_name": "张三", "output_path": "voice-failure.xlsx"}
+            "/api/export",
+            data={
+                "sheet_name": "张三",
+                "output_path": "voice-failure.xlsx",
+                "enable_voice": "true",
+                "privacy_acknowledged": "true",
+            },
         )
-        assert response.status_code == 200
+        assert response.status_code == 202
         asyncio.run(scheduled[0])
 
     assert "Voice transcription failed for session" in caplog.text
@@ -226,7 +238,7 @@ def test_export_closes_worker_workbook_when_task_writing_fails(
         "/api/export", data={"sheet_name": "张三", "output_path": "failure.xlsx"}
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert len(writers) == 1
     asyncio.run(scheduled[0])
     assert len(writers) == 2
@@ -492,10 +504,11 @@ def test_export_page_parses_json_sse_and_uses_text_content(monkeypatch, client_w
 
     for coroutine in scheduled:
         coroutine.close()
-    assert response.status_code == 200
-    assert "JSON.parse(e.data)" in response.text
-    assert ".innerHTML" not in response.text
-    assert ".textContent" in response.text
+    script = client_with_preview.get("/static/wizard.js")
+    assert response.status_code == 202
+    assert "JSON.parse(event.data)" in script.text
+    assert ".innerHTML" not in script.text
+    assert ".textContent" in script.text
     assert "/api/progress/stream?job_id=" in response.text
 
 
@@ -560,7 +573,7 @@ def test_export_job_snapshots_mutable_session_inputs(monkeypatch, client_with_pr
         "/api/export", data={"sheet_name": "张三", "output_path": "snapshot.xlsx"}
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert len(jobs) == 1
     job = jobs[0]
     state["parsed_tasks"][0].tasks.append("late mutation")

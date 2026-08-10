@@ -280,7 +280,7 @@ def test_preview_uses_validated_selection_and_pushes_step_three(connected_client
     assert response.status_code == 200
     assert response.headers["HX-Push-Url"] == "/wizard/3"
     assert 'id="wizard-workspace"' in response.text
-    assert "步骤 3：预览与导出" in response.text
+    assert "确认任务并导出工作簿" in response.text
     assert 'hx-swap-oob="outerHTML"' in response.text
     back_action = response.text.split("← 返回修改", 1)[0].rsplit("<a", 1)[1]
     assert 'hx-get="/wizard/2/partial"' in back_action

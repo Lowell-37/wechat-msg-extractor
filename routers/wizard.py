@@ -19,7 +19,7 @@ router = APIRouter()
 _STEP_TEMPLATES = {
     WizardStep.CONNECT: "steps/connect.html",
     WizardStep.SELECT: "steps/select.html",
-    WizardStep.PREVIEW: "fragments/preview_result.html",
+    WizardStep.PREVIEW: "steps/preview.html",
 }
 
 _STEP_LABELS = {
@@ -199,18 +199,44 @@ def build_preview_view_model(
     *,
     parsed_tasks: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Restore the existing preview partial from persisted wizard state."""
-    selection = get_wizard(state).selection
+    """Build grouped preview rows and persisted export controls."""
+    wizard = get_wizard(state)
+    selection = wizard.selection
+    tasks = parsed_tasks if parsed_tasks is not None else state.get("parsed_tasks", [])
+    selected_ids = set(wizard.selected_task_ids)
+    if not selected_ids:
+        selected_ids = {str(task.msg_id) for task in tasks}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        date_key = task.date.isoformat()
+        grouped.setdefault(date_key, []).append(
+            {
+                "id": str(task.msg_id),
+                "task": task,
+                "selected": str(task.msg_id) in selected_ids,
+            }
+        )
+    config = request.app.state.config
     return {
         "group_name": selection.group_name,
         "sheet_name": selection.sheet_name,
         "start_date": selection.start_date.isoformat() if selection.start_date else "",
         "end_date": selection.end_date.isoformat() if selection.end_date else "",
-        "parsed_tasks": (
-            parsed_tasks if parsed_tasks is not None else state.get("parsed_tasks", [])
-        ),
+        "parsed_tasks": tasks,
+        "task_groups": [
+            {"date": date_key, "rows": rows}
+            for date_key, rows in sorted(grouped.items())
+        ],
+        "selected_task_ids": selected_ids,
+        "task_count": len(tasks),
         "sheet_names": state.get("catalog_sheet_names") or (),
-        "default_output_path": f"任务记录_{date.today().isoformat()}.xlsx",  # noqa: DTZ011
+        "default_output_path": wizard.output_path
+        or f"任务记录_{date.today().isoformat()}.xlsx",  # noqa: DTZ011
+        "enable_ai": wizard.enable_ai,
+        "enable_voice": wizard.enable_voice,
+        "privacy_acknowledged": wizard.privacy_acknowledged,
+        "ai_provider": config.ai.provider,
+        "voice_provider": config.voice.transcriber,
     }
 
 

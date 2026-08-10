@@ -3,7 +3,7 @@ import sqlite3
 import tempfile
 import uuid
 from datetime import date, datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import StreamingResponse
@@ -32,6 +32,7 @@ from services.wizard import (
     has_complete_selection,
     mark_connected,
     request_step,
+    store_export_preferences,
     update_session_selection,
 )
 
@@ -270,7 +271,7 @@ async def preview(
     request_step(get_wizard(state), WizardStep.PREVIEW)
     context = build_wizard_context(WizardStep.PREVIEW, get_wizard(state))
     context.update(build_preview_view_model(request, state, parsed_tasks=result.tasks))
-    context["step_template"] = "fragments/preview_result.html"
+    context["step_template"] = "steps/preview.html"
     response = _template(request, "wizard_fragment.html", context)
     response.headers["HX-Push-Url"] = "/wizard/3"
     return _with_session_cookie(request, response, session_id)
@@ -281,43 +282,100 @@ async def export(
     request: Request,
     output_path: str = Form(""),
     sheet_name: str = Form(""),
+    task_id: Annotated[list[str] | None, Form()] = None,
+    task_selection_present: bool = Form(False),
+    enable_ai: bool = Form(False),
+    enable_voice: bool = Form(False),
+    privacy_acknowledged: bool = Form(False),
 ):
     session_id, state = get_session(request)
-    if export_service.has_active_job(session_id):
-        return _session_template_error(
+    active_job_id = export_service.active_job_id(session_id)
+    if active_job_id:
+        response = _template(
             request,
-            session_id,
-            "导出任务正在进行，请稍后重试",
-            409,
+            "components/export_progress.html",
+            _export_progress_context(
+                job_id=active_job_id,
+                state="active",
+                message="导出任务正在进行，已恢复当前进度。",
+                retry_values=_stored_export_values(state),
+            ),
+            status_code=409,
         )
+        return _with_session_cookie(request, response, session_id)
 
     parsed_tasks = state.get("parsed_tasks", [])
     sheet_name = sheet_name or state.get("selected_sheet", "")
-    if not parsed_tasks:
-        return _session_template_error(
-            request, session_id, "没有可导出的任务", 400
+    wizard = get_wizard(state)
+    selected_ids = list(dict.fromkeys(task_id or []))
+    if not selected_ids and not task_selection_present:
+        selected_ids = wizard.selected_task_ids or [
+            str(task.msg_id) for task in parsed_tasks
+        ]
+    retry_values = {
+        "task_ids": selected_ids,
+        "output_path": output_path,
+        "sheet_name": sheet_name,
+        "enable_ai": enable_ai,
+        "enable_voice": enable_voice,
+        "privacy_acknowledged": privacy_acknowledged,
+    }
+    store_export_preferences(
+        wizard,
+        selected_task_ids=selected_ids,
+        output_path=output_path,
+        enable_ai=enable_ai,
+        enable_voice=enable_voice,
+        privacy_acknowledged=privacy_acknowledged,
+    )
+    if (enable_ai or enable_voice) and not privacy_acknowledged:
+        return _export_error(
+            request,
+            session_id,
+            "请先确认可能发送到外部服务的数据、提供商与处理影响。",
+            422,
+            retry_values,
         )
+    if not parsed_tasks:
+        return _export_error(
+            request, session_id, "没有可导出的任务", 400, retry_values
+        )
+    if not selected_ids:
+        return _export_error(
+            request, session_id, "请至少选择一条任务", 422, retry_values
+        )
+    tasks_by_id = {str(task.msg_id): task for task in parsed_tasks}
+    if any(identifier not in tasks_by_id for identifier in selected_ids):
+        return _export_error(
+            request,
+            session_id,
+            "任务选择已过期，请返回预览后重试",
+            409,
+            retry_values,
+        )
+    selected_tasks = [tasks_by_id[identifier] for identifier in selected_ids]
     if not sheet_name:
-        return _session_template_error(
-            request, session_id, "未指定目标 Sheet", 400
+        return _export_error(
+            request, session_id, "未指定目标 Sheet", 400, retry_values
         )
     try:
         start_value, end_value = parse_date_range(
             state.get("start_date"), state.get("end_date")
         )
     except ValidationError as exc:
-        return _session_template_error(
-            request, session_id, str(exc), 400
+        return _export_error(
+            request, session_id, str(exc), 400, retry_values
         )
 
     config = request.app.state.config
     excel_path = config.excel.template_path
     if not os.path.exists(excel_path):
-        return _session_template_error(
+        return _export_error(
             request,
             session_id,
             f"Excel 模板不存在：{excel_path}",
             400,
+            retry_values,
         )
 
     writer = None
@@ -327,15 +385,16 @@ async def export(
             sheet_name, writer.get_sheet_names()
         )
     except ValidationError as exc:
-        return _session_template_error(
-            request, session_id, str(exc), 400
+        return _export_error(
+            request, session_id, str(exc), 400, retry_values
         )
     except Exception as exc:  # noqa: BLE001
-        return _session_template_error(
+        return _export_error(
             request,
             session_id,
             f"无法读取 Excel 模板：{exc}",
             400,
+            retry_values,
         )
     finally:
         if writer is not None:
@@ -350,19 +409,19 @@ async def export(
             )
         )
     except ValidationError as exc:
-        return _session_template_error(
-            request, session_id, str(exc), 400
+        return _export_error(
+            request, session_id, str(exc), 400, retry_values
         )
 
     database = state.get("ddb")
     if not database:
-        return _session_template_error(
-            request, session_id, "请先完成鉴权", 401
+        return _export_error(
+            request, session_id, "请先完成鉴权", 401, retry_values
         )
     group_value = state.get("selected_group")
     if not group_value:
-        return _session_template_error(
-            request, session_id, "未指定群聊", 400
+        return _export_error(
+            request, session_id, "未指定群聊", 400, retry_values
         )
 
     job_id = str(uuid.uuid4())
@@ -376,14 +435,32 @@ async def export(
         output_path=output_value,
         start_date=start_value,
         end_date=end_value,
-        parsed_tasks=parsed_tasks,
+        parsed_tasks=selected_tasks,
         analysis_by_date=state.get("analysis_by_date", {}),
+        enable_ai=enable_ai,
+        enable_voice=enable_voice,
     )
-    request.app.state.start_export_job(job)
+    try:
+        request.app.state.start_export_job(job)
+    except Exception as exc:
+        request.app.state.logger.exception("Unable to start export job")
+        return _export_error(
+            request,
+            session_id,
+            f"导出启动失败：{exc}",
+            500,
+            retry_values,
+        )
     response = _template(
         request,
-        "fragments/export_progress.html",
-        {"job_id": job_id},
+        "components/export_progress.html",
+        _export_progress_context(
+            job_id=job_id,
+            state="active",
+            message="正在准备导出...",
+            retry_values=retry_values,
+        ),
+        status_code=202,
     )
     return _with_session_cookie(request, response, session_id)
 
@@ -530,6 +607,55 @@ def _template(
         context,
         status_code=status_code,
     )
+
+
+def _stored_export_values(state: dict[str, Any]) -> dict[str, Any]:
+    wizard = get_wizard(state)
+    return {
+        "task_ids": wizard.selected_task_ids,
+        "output_path": wizard.output_path,
+        "sheet_name": wizard.selection.sheet_name or state.get("selected_sheet", ""),
+        "enable_ai": wizard.enable_ai,
+        "enable_voice": wizard.enable_voice,
+        "privacy_acknowledged": wizard.privacy_acknowledged,
+    }
+
+
+def _export_progress_context(
+    *,
+    job_id: str,
+    state: str,
+    message: str,
+    retry_values: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "job_id": job_id,
+        "export_state": state,
+        "progress": 0,
+        "progress_message": message,
+        "retry_values": retry_values,
+    }
+
+
+def _export_error(
+    request: Request,
+    session_id: str,
+    message: str,
+    status_code: int,
+    retry_values: dict[str, Any],
+):
+    response = _template(
+        request,
+        "components/export_progress.html",
+        _export_progress_context(
+            job_id="",
+            state="failed",
+            message=message,
+            retry_values=retry_values,
+        ),
+        status_code=status_code,
+    )
+    return _with_session_cookie(request, response, session_id)
 
 
 def _session_template_error(

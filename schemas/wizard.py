@@ -32,6 +32,7 @@ class WizardState:
     connected: bool = False
     selection: WizardSelection = field(default_factory=WizardSelection)
     preview_tasks: list[Any] = field(default_factory=list)
+    selected_task_ids: list[str] = field(default_factory=list)
     preview_ready: bool = False
     output_path: str = ""
     enable_ai: bool = False

@@ -43,6 +43,8 @@ class ExportJob:
     end_date: date
     parsed_tasks: tuple[ExportTaskSnapshot, ...]
     analysis_by_date: tuple[tuple[str, tuple[str, ...]], ...]
+    enable_ai: bool
+    enable_voice: bool
 
 
 def configure(
@@ -73,6 +75,8 @@ def create_export_job(
     end_date: date,
     parsed_tasks: list[ParsedTask],
     analysis_by_date: dict[str, list[str]],
+    enable_ai: bool = False,
+    enable_voice: bool = False,
 ) -> ExportJob:
     """Create an immutable export snapshot from mutable session inputs."""
     return ExportJob(
@@ -87,6 +91,8 @@ def create_export_job(
         end_date=end_date,
         parsed_tasks=_snapshot_parsed_tasks(parsed_tasks),
         analysis_by_date=_snapshot_analysis(analysis_by_date),
+        enable_ai=enable_ai,
+        enable_voice=enable_voice,
     )
 
 
@@ -114,20 +120,24 @@ def _snapshot_analysis(
 
 
 def has_active_job(session_id: str) -> bool:
+    return active_job_id(session_id) is not None
+
+
+def active_job_id(session_id: str) -> str | None:
     job_id = session_jobs.get(session_id)
     if not job_id:
-        return False
+        return None
     task = export_tasks.get(job_id)
     if task is None:
         session_jobs.pop(session_id, None)
         export_tasks.pop(job_id, None)
-        return False
+        return None
     done = getattr(task, "done", None)
     if done is None or not done():
-        return True
+        return job_id
     session_jobs.pop(session_id, None)
     export_tasks.pop(job_id, None)
-    return False
+    return None
 
 
 def start_export_job(job: ExportJob) -> None:
@@ -168,7 +178,7 @@ async def run_export_job(job: ExportJob) -> None:
         }
         total = len(job.parsed_tasks)
 
-        if config.voice.enabled and config.voice.api_key:
+        if job.enable_voice and config.voice.enabled and config.voice.api_key:
             await progress_hub.emit(
                 job.job_id,
                 ProgressEvent(
@@ -217,7 +227,7 @@ async def run_export_job(job: ExportJob) -> None:
                 )
 
         analyzer = None
-        if config.ai.enabled and config.ai.api_key:
+        if job.enable_ai and config.ai.enabled and config.ai.api_key:
             analyzer = analyzer_factory(config.ai)
 
         await progress_hub.emit(
