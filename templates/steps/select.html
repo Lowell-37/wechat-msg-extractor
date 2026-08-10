@@ -1,0 +1,117 @@
+<section class="step-panel select-step" aria-labelledby="select-title">
+    <div class="step-heading">
+        <p class="eyebrow">步骤 2 · 选择数据</p>
+        <h1 id="select-title" tabindex="-1">选择群聊、日期与目标 Sheet</h1>
+        <p>搜索和选择都使用本次连接建立的群聊缓存，不会重复扫描消息库。</p>
+    </div>
+
+    <form id="selection-form"
+          class="selection-form"
+          hx-post="/api/selection"
+          hx-trigger="change from:.selection-control"
+          hx-target="#wizard-workspace"
+          hx-swap="innerHTML">
+        <input type="hidden" name="group_name" value="{{ group_name }}">
+
+        <div class="selection-search">
+            <label for="chatroom-query">搜索群聊</label>
+            <input id="chatroom-query"
+                   class="input-search"
+                   type="search"
+                   name="query"
+                   value="{{ query }}"
+                   placeholder="输入群名或群聊 ID"
+                   autocomplete="off"
+                   hx-get="/api/catalog"
+                   hx-trigger="input changed delay:300ms, search"
+                   hx-include="#selection-form"
+                   hx-target="#chatroom-list"
+                   hx-swap="innerHTML">
+        </div>
+
+        <fieldset class="date-range">
+            <legend>消息日期范围</legend>
+            <div>
+                <label for="start-date">开始日期</label>
+                <input id="start-date"
+                       class="input-date selection-control"
+                       type="date"
+                       name="start_date"
+                       value="{{ start_date }}"
+                       required>
+            </div>
+            <span aria-hidden="true">至</span>
+            <div>
+                <label for="end-date">结束日期</label>
+                <input id="end-date"
+                       class="input-date selection-control"
+                       type="date"
+                       name="end_date"
+                       value="{{ end_date }}"
+                       required>
+            </div>
+        </fieldset>
+
+        <section class="chatroom-section" aria-labelledby="chatroom-title">
+            <div class="section-heading">
+                <div>
+                    <h2 id="chatroom-title">群聊列表</h2>
+                    <p>选择一个群聊，并确认这一行的目标 Sheet。</p>
+                </div>
+            </div>
+            <div id="chatroom-list" class="chatroom-list">
+                {% include "components/chatroom_rows.html" %}
+            </div>
+        </section>
+
+        {% if validation_error %}
+        <p class="selection-error" role="alert">{{ validation_error }}</p>
+        {% endif %}
+
+        <p id="selection-summary" class="selection-summary" aria-live="polite">
+            {% if next_enabled %}
+            已选择 {{ group_name }} · {{ start_date }} 至 {{ end_date }} · Sheet：{{ sheet_name }}
+            {% elif group_name %}
+            当前选择尚未完成，请检查日期范围和目标 Sheet。
+            {% else %}
+            尚未选择群聊。
+            {% endif %}
+        </p>
+
+        <div class="wizard-actions"
+             data-next-enabled="{{ 'true' if next_enabled else 'false' }}"
+             aria-label="步骤操作">
+            <a class="btn btn-secondary"
+               href="/wizard/1"
+               hx-get="/wizard/1/partial"
+               hx-target="#wizard-workspace"
+               hx-swap="outerHTML">
+                <span aria-hidden="true">←</span> 返回连接
+            </a>
+            {% if next_enabled %}
+            <button class="btn btn-primary"
+                    type="button"
+                    hx-post="/api/preview"
+                    hx-include="#selection-form"
+                    hx-target="#wizard-workspace"
+                    hx-swap="outerHTML">
+                下一步：预览导出 <span aria-hidden="true">→</span>
+            </button>
+            {% else %}
+            <button class="btn btn-primary" type="button" disabled>
+                下一步：预览导出 <span aria-hidden="true">→</span>
+            </button>
+            {% endif %}
+        </div>
+    </form>
+</section>
+{% if include_oob_updates %}
+    {% with stepper_oob = true %}
+        {% include "components/stepper.html" %}
+    {% endwith %}
+    {% if validation_error %}
+    <div id="wizard-announcer" hx-swap-oob="innerHTML">
+        <span>选择未保存。{{ validation_error }}</span>
+    </div>
+    {% endif %}
+{% endif %}

@@ -16,13 +16,18 @@ from core.validation import (
     resolve_output_path,
     validate_sheet_name,
 )
-from routers.wizard import build_connection_view_model, build_wizard_context
+from routers.wizard import (
+    build_connection_view_model,
+    build_preview_view_model,
+    build_selection_view_model,
+    build_wizard_context,
+)
 from schemas.wizard import WizardStep
 from services import export as export_service
-from services.catalog import filter_catalog, load_catalog
-from services.preview import build_legacy_preview
+from services.catalog import filter_catalog, find_catalog_option, load_catalog
+from services.preview import build_legacy_preview, build_preview
 from services.session import dispose_session, get_session, new_session_state, session_state
-from services.wizard import get_wizard, mark_connected
+from services.wizard import get_wizard, mark_connected, request_step, update_selection
 
 router = APIRouter()
 
@@ -105,33 +110,129 @@ async def search_chatrooms(request: Request, query: str = ""):
     return _with_session_cookie(request, response, session_id)
 
 
+@router.get("/api/catalog")
+async def catalog(
+    request: Request,
+    query: str = "",
+    group_id: str = "",
+    sheet_name: str = "",
+):
+    session_id, state = get_session(request)
+    if not state.get("ddb"):
+        return _session_template_error(request, session_id, "请先完成鉴权", 401)
+    if not isinstance(state.get("chatroom_catalog"), tuple):
+        return _session_template_error(
+            request, session_id, "群聊缓存尚未就绪，请重新进入选择步骤", 409
+        )
+    options = filter_catalog(state, query)
+    response = _template(
+        request,
+        "components/chatroom_rows.html",
+        {
+            "options": options,
+            "sheet_names": state.get("catalog_sheet_names", ()),
+            "group_id": group_id,
+            "sheet_name": sheet_name,
+        },
+    )
+    return _with_session_cookie(request, response, session_id)
+
+
+@router.post("/api/selection")
+async def selection(
+    request: Request,
+    group_id: str = Form(""),
+    group_name: str = Form(""),
+    start_date: str = Form(""),
+    end_date: str = Form(""),
+    sheet_name: str = Form(""),
+    query: str = Form(""),
+):
+    session_id, state = get_session(request)
+    wizard = get_wizard(state)
+    values = {
+        "group_id": group_id,
+        "group_name": group_name,
+        "start_date": start_date,
+        "end_date": end_date,
+        "sheet_name": sheet_name,
+        "query": query,
+    }
+    error = "" if wizard.connected and state.get("ddb") else "请先完成鉴权"
+    if not error:
+        try:
+            option = find_catalog_option(state, group_id, group_name)
+            start_value, end_value = parse_date_range(start_date, end_date)
+            sheet_value = validate_sheet_name(
+                sheet_name, state.get("catalog_sheet_names", ())
+            )
+            update_selection(
+                wizard,
+                option.chat_id,
+                option.display_name,
+                start_value,
+                end_value,
+                sheet_value,
+            )
+            state["selected_group"] = option.chat_id
+            state["selected_sheet"] = sheet_value
+            state["start_date"] = start_date
+            state["end_date"] = end_date
+        except ValidationError as exc:
+            error = str(exc)
+    status_code = 422 if error else 200
+
+    context = build_wizard_context(WizardStep.SELECT, wizard)
+    context["include_oob_updates"] = True
+    context.update(
+        build_selection_view_model(
+            request,
+            state,
+            values=values,
+            validation_error=error,
+            next_enabled=not error,
+        )
+    )
+    response = _template(
+        request, "steps/select.html", context, status_code=status_code
+    )
+    return _with_session_cookie(request, response, session_id)
+
+
 @router.post("/api/preview")
 async def preview(
     request: Request,
+    group_id: str = Form(""),
     group_name: str = Form(...),
     sheet_name: str = Form(""),
     start_date: str = Form(...),
     end_date: str = Form(...),
 ):
     session_id, state = get_session(request)
-    try:
-        parse_date_range(start_date, end_date)
-    except ValidationError as exc:
-        return _session_template_error(
-            request, session_id, str(exc), 400
-        )
     if not state.get("ddb"):
         return _session_template_error(
             request, session_id, "请先完成鉴权", 401
         )
     try:
-        result = build_legacy_preview(
-            state,
-            group_name,
-            start_date,
-            end_date,
-            sheet_name,
-        )
+        if group_id:
+            result = build_preview(
+                state,
+                group_id,
+                group_name,
+                start_date,
+                end_date,
+                sheet_name,
+            )
+        else:
+            result = build_legacy_preview(
+                state,
+                group_name,
+                start_date,
+                end_date,
+                sheet_name,
+            )
+    except ValidationError as exc:
+        return _session_template_error(request, session_id, str(exc), 400)
     except Exception as exc:  # noqa: BLE001
         return _session_template_error(
             request,
@@ -140,34 +241,12 @@ async def preview(
             500,
         )
 
-    sheet_names = []
-    writer = None
-    try:
-        writer = request.app.state.writer_factory(
-            request.app.state.config.excel.template_path
-        )
-        sheet_names = writer.get_sheet_names()
-    except Exception:
-        request.app.state.logger.debug(
-            "Excel sheet discovery failed", exc_info=True
-        )
-    finally:
-        if writer is not None:
-            writer.close()
-
-    response = _template(
-        request,
-        "fragments/preview_result.html",
-        {
-            "group_name": group_name,
-            "sheet_name": sheet_name,
-            "start_date": start_date,
-            "end_date": end_date,
-            "parsed_tasks": result.tasks,
-            "sheet_names": sheet_names,
-            "default_output_path": f"任务记录_{date.today().isoformat()}.xlsx",  # noqa: DTZ011
-        },
-    )
+    request_step(get_wizard(state), WizardStep.PREVIEW)
+    context = build_wizard_context(WizardStep.PREVIEW, get_wizard(state))
+    context.update(build_preview_view_model(request, state, parsed_tasks=result.tasks))
+    context["step_template"] = "fragments/preview_result.html"
+    response = _template(request, "wizard_fragment.html", context)
+    response.headers["HX-Push-Url"] = "/wizard/3"
     return _with_session_cookie(request, response, session_id)
 
 

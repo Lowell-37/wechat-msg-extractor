@@ -3,6 +3,7 @@ from typing import Any, cast
 
 from core.excel_writer import ExcelWriter
 from core.matcher import SheetMatcher
+from core.validation import ValidationError
 from schemas.catalog import CatalogDependencies, ChatroomOption
 
 
@@ -55,6 +56,18 @@ def filter_catalog(
         if normalized_query in option.chat_id.casefold()
         or normalized_query in option.display_name.casefold()
     ]
+
+
+def find_catalog_option(
+    state: MutableMapping[str, Any], group_id: str, group_name: str
+) -> ChatroomOption:
+    """Resolve an exact group ID/name pair from the immutable session cache."""
+    catalog = state.get("chatroom_catalog")
+    if isinstance(catalog, tuple):
+        for option in catalog:
+            if option.chat_id == group_id and option.display_name == group_name:
+                return option
+    raise ValidationError("群聊选择无效或已过期")
 
 
 def _catalog_dependencies(state: MutableMapping[str, Any]) -> CatalogDependencies:

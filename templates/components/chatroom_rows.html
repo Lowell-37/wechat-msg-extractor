@@ -1,0 +1,42 @@
+{% for option in options %}
+{% set is_selected = option.chat_id == group_id %}
+{% set row_sheet = sheet_name if is_selected and sheet_name else option.suggested_sheet %}
+<div class="chatroom-row{% if is_selected %} chatroom-row--selected{% endif %}"
+     data-chatroom-row>
+    <input id="group-{{ loop.index }}"
+           class="chatroom-radio selection-control"
+           type="radio"
+           name="group_id"
+           value="{{ option.chat_id }}"{% if is_selected %} checked{% endif %}
+           data-group-name="{{ option.display_name }}"
+           >
+    <label class="chatroom-copy" for="group-{{ loop.index }}">
+        <strong>{{ option.display_name }}</strong>
+        <span>
+            {% if option.last_message_at %}
+            最近消息 {{ option.last_message_at.strftime("%Y-%m-%d %H:%M") }}
+            {% else %}
+            暂无最近消息时间
+            {% endif %}
+            · {{ option.message_count }} 条消息
+        </span>
+    </label>
+    <div class="chatroom-sheet-field">
+        <label for="sheet-{{ loop.index }}">目标 Sheet</label>
+        <select class="chatroom-sheet-select selection-control"
+                id="sheet-{{ loop.index }}"
+                name="sheet_name"
+                {% if not is_selected %}disabled{% endif %}>
+            <option value="">请选择 Sheet</option>
+            {% if is_selected and row_sheet and row_sheet not in sheet_names %}
+            <option value="{{ row_sheet }}" selected>{{ row_sheet }}（不可用）</option>
+            {% endif %}
+            {% for available_sheet in sheet_names %}
+            <option value="{{ available_sheet }}"{% if available_sheet == row_sheet %} selected{% endif %}>{{ available_sheet }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+{% else %}
+<p class="empty-state">没有符合搜索条件的群聊。</p>
+{% endfor %}

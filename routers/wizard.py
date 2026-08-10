@@ -5,15 +5,21 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from schemas.wizard import WizardStep
+from services.catalog import find_catalog_option, load_catalog
 from services.session import get_session
-from services.wizard import get_wizard, request_step, step_statuses
+from services.wizard import (
+    get_wizard,
+    has_complete_selection,
+    request_step,
+    step_statuses,
+)
 
 router = APIRouter()
 
 _STEP_TEMPLATES = {
     WizardStep.CONNECT: "steps/connect.html",
-    WizardStep.SELECT: "step2_select.html",
-    WizardStep.PREVIEW: "step3_preview.html",
+    WizardStep.SELECT: "steps/select.html",
+    WizardStep.PREVIEW: "fragments/preview_result.html",
 }
 
 _STEP_LABELS = {
@@ -73,18 +79,14 @@ def _render_wizard_step(
         )
         return _with_session_cookie(request, response, session_id)
 
-    today = date.today()  # noqa: DTZ011
     context = build_wizard_context(accessible, wizard)
-    context.update(
-        {
-            "step_template": _STEP_TEMPLATES[accessible],
-            "start_date": state.get("start_date")
-            or (today - timedelta(days=30)).isoformat(),
-            "end_date": state.get("end_date") or today.isoformat(),
-        }
-    )
+    context["step_template"] = _STEP_TEMPLATES[accessible]
     if accessible is WizardStep.CONNECT:
         context.update(build_connection_view_model(request, state))
+    elif accessible is WizardStep.SELECT:
+        context.update(build_selection_view_model(request, state))
+    else:
+        context.update(build_preview_view_model(request, state))
 
     response = request.app.state.templates.TemplateResponse(
         request,
@@ -131,6 +133,84 @@ def build_connection_view_model(
         "environment_warnings": environment["warnings"],
         "connection_status": connection_status,
         "next_enabled": wizard.connected,
+    }
+
+
+def build_selection_view_model(
+    request: Request,
+    state: dict[str, Any],
+    *,
+    values: dict[str, str] | None = None,
+    validation_error: str = "",
+    next_enabled: bool | None = None,
+) -> dict[str, Any]:
+    """Build the single-region selection view from cache and session state."""
+    wizard = get_wizard(state)
+    catalog_error = ""
+    if not isinstance(state.get("chatroom_catalog"), tuple):
+        try:
+            load_catalog(state, request.app.state.config.excel.template_path)
+        except Exception as exc:  # noqa: BLE001
+            catalog_error = f"无法加载群聊列表：{exc}"
+
+    selection = wizard.selection
+    today = date.today()  # noqa: DTZ011
+    defaults = {
+        "group_id": selection.group_id,
+        "group_name": selection.group_name,
+        "start_date": (
+            selection.start_date.isoformat()
+            if selection.start_date
+            else state.get("start_date") or (today - timedelta(days=30)).isoformat()
+        ),
+        "end_date": (
+            selection.end_date.isoformat()
+            if selection.end_date
+            else state.get("end_date") or today.isoformat()
+        ),
+        "sheet_name": selection.sheet_name or state.get("selected_sheet") or "",
+        "query": "",
+    }
+    if values:
+        defaults.update(values)
+    if next_enabled is None:
+        next_enabled = has_complete_selection(selection)
+        if next_enabled:
+            try:
+                find_catalog_option(state, selection.group_id, selection.group_name)
+            except ValueError:
+                next_enabled = False
+            else:
+                next_enabled = selection.sheet_name in state.get(
+                    "catalog_sheet_names", ()
+                )
+    return {
+        **defaults,
+        "options": state.get("chatroom_catalog") or (),
+        "sheet_names": state.get("catalog_sheet_names") or (),
+        "validation_error": validation_error or catalog_error,
+        "next_enabled": next_enabled,
+    }
+
+
+def build_preview_view_model(
+    request: Request,
+    state: dict[str, Any],
+    *,
+    parsed_tasks: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Restore the existing preview partial from persisted wizard state."""
+    selection = get_wizard(state).selection
+    return {
+        "group_name": selection.group_name,
+        "sheet_name": selection.sheet_name,
+        "start_date": selection.start_date.isoformat() if selection.start_date else "",
+        "end_date": selection.end_date.isoformat() if selection.end_date else "",
+        "parsed_tasks": (
+            parsed_tasks if parsed_tasks is not None else state.get("parsed_tasks", [])
+        ),
+        "sheet_names": state.get("catalog_sheet_names") or (),
+        "default_output_path": f"任务记录_{date.today().isoformat()}.xlsx",  # noqa: DTZ011
     }
 
 

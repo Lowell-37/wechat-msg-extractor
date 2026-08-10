@@ -591,6 +591,143 @@ select {
     outline: none;
 }
 
+.selection-form {
+    display: grid;
+    gap: 18px;
+}
+
+.selection-search label,
+.date-range label,
+.chatroom-sheet-field label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.date-range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: end;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.date-range legend {
+    grid-column: 1 / -1;
+    margin-bottom: 8px;
+    padding: 0;
+    font-weight: 700;
+}
+
+.date-range > span {
+    padding-bottom: 10px;
+    color: var(--ink-soft);
+}
+
+.chatroom-section {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+}
+
+.chatroom-list {
+    max-height: 390px;
+    overflow-y: auto;
+}
+
+.chatroom-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(180px, 0.42fr);
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    transition: background-color 150ms ease;
+}
+
+.chatroom-row:last-child {
+    border-bottom: 0;
+}
+
+.chatroom-row--selected {
+    background: var(--green-soft);
+}
+
+.chatroom-radio {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--green);
+}
+
+.chatroom-copy {
+    min-width: 0;
+    cursor: pointer;
+}
+
+.chatroom-copy strong,
+.chatroom-copy span {
+    display: block;
+}
+
+.chatroom-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chatroom-copy span {
+    margin-top: 2px;
+    color: var(--ink-soft);
+    font-size: 12px;
+}
+
+.chatroom-sheet-select {
+    min-height: 38px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+}
+
+.chatroom-sheet-select:disabled {
+    color: #88918b;
+    background: #f1f4f2;
+}
+
+.selection-summary,
+.selection-error,
+.empty-state {
+    margin: 0;
+}
+
+.selection-summary {
+    overflow: hidden;
+    color: var(--ink-soft);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.selection-error {
+    padding: 11px 13px;
+    border: 1px solid #f2c5c0;
+    border-radius: var(--radius-small);
+    color: var(--danger);
+    background: var(--danger-soft);
+}
+
+.empty-state {
+    padding: 28px 18px;
+    color: var(--ink-soft);
+    text-align: center;
+}
+
+.selection-actions {
+    margin-top: 0;
+}
+
 .manual-key-form small {
     display: block;
     margin-top: 6px;
@@ -768,6 +905,22 @@ select {
 
     .input-action-row {
         grid-template-columns: 1fr;
+    }
+
+    .date-range {
+        grid-template-columns: 1fr;
+    }
+
+    .date-range > span {
+        display: none;
+    }
+
+    .chatroom-row {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .chatroom-sheet-field {
+        grid-column: 2;
     }
 
     .wizard-actions {

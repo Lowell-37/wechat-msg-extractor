@@ -4,12 +4,28 @@ import app as app_module
 from schemas.wizard import StepStatus, WizardState, WizardStep
 from services.wizard import (
     get_wizard,
+    has_complete_selection,
     mark_connected,
     request_step,
     step_statuses,
     store_preview,
     update_selection,
 )
+
+
+def test_complete_selection_requires_a_chronological_date_range():
+    wizard = WizardState()
+    mark_connected(wizard)
+    update_selection(
+        wizard,
+        "room-1",
+        "项目群",
+        date(2026, 8, 3),
+        date(2026, 8, 1),
+        "项目群",
+    )
+
+    assert has_complete_selection(wizard.selection) is False
 
 
 def test_future_step_is_redirected_to_latest_available_step():
