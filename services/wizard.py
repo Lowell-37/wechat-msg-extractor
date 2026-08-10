@@ -54,6 +54,11 @@ def update_selection(
 
 def store_preview(wizard: WizardState, tasks: Sequence[Any]) -> None:
     """Persist a generated preview without automatically advancing the wizard."""
+    if not wizard.connected or not _has_complete_selection(wizard.selection):
+        wizard.preview_tasks.clear()
+        wizard.preview_ready = False
+        return
+
     wizard.preview_tasks = list(tasks)
     wizard.preview_ready = True
 
@@ -68,11 +73,25 @@ def step_statuses(wizard: WizardState) -> dict[WizardStep, StepStatus]:
 
 
 def _latest_available_step(wizard: WizardState) -> WizardStep:
-    if wizard.preview_ready:
+    if (
+        wizard.connected
+        and _has_complete_selection(wizard.selection)
+        and wizard.preview_ready
+    ):
         return WizardStep.PREVIEW
     if wizard.connected:
         return WizardStep.SELECT
     return WizardStep.CONNECT
+
+
+def _has_complete_selection(selection: WizardSelection) -> bool:
+    return bool(
+        selection.group_id
+        and selection.group_name
+        and selection.start_date
+        and selection.end_date
+        and selection.sheet_name
+    )
 
 
 def _step_status(

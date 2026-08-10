@@ -111,3 +111,92 @@ def test_new_session_state_retains_resources_and_stores_wizard():
     assert state["wdb"] is None
     assert state["ddb"] is None
     assert state["last_access"] == 123.0
+
+
+def test_store_preview_cannot_unlock_preview_without_connection_and_selection():
+    wizard = WizardState()
+
+    store_preview(wizard, ["task"])
+
+    assert wizard.preview_ready is False
+    assert wizard.preview_tasks == []
+    assert request_step(wizard, WizardStep.PREVIEW) is WizardStep.CONNECT
+
+
+def test_stale_preview_flag_cannot_unlock_preview_without_prerequisites():
+    wizard = WizardState(preview_ready=True)
+
+    assert request_step(wizard, WizardStep.PREVIEW) is WizardStep.CONNECT
+
+    mark_connected(wizard)
+    assert request_step(wizard, WizardStep.PREVIEW) is WizardStep.SELECT
+
+
+def test_changed_group_invalidates_preview_but_unchanged_selection_preserves_it():
+    wizard = WizardState()
+    mark_connected(wizard)
+    update_selection(
+        wizard,
+        "room-1",
+        "Project group",
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        "Project group",
+    )
+    store_preview(wizard, ["task"])
+
+    update_selection(
+        wizard,
+        "room-1",
+        "Project group",
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        "Project group",
+    )
+    assert wizard.preview_ready is True
+
+    update_selection(
+        wizard,
+        "room-2",
+        "Operations group",
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        "Project group",
+    )
+    assert wizard.preview_ready is False
+    assert wizard.preview_tasks == []
+
+
+def test_changed_sheet_invalidates_preview_but_unchanged_selection_preserves_it():
+    wizard = WizardState()
+    mark_connected(wizard)
+    update_selection(
+        wizard,
+        "room-1",
+        "Project group",
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        "Project group",
+    )
+    store_preview(wizard, ["task"])
+
+    update_selection(
+        wizard,
+        "room-1",
+        "Project group",
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        "Project group",
+    )
+    assert wizard.preview_ready is True
+
+    update_selection(
+        wizard,
+        "room-1",
+        "Project group",
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        "Operations group",
+    )
+    assert wizard.preview_ready is False
+    assert wizard.preview_tasks == []
