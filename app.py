@@ -31,6 +31,7 @@ from core.validation import (
     validate_sheet_name,
 )
 from core.voice import VoiceTranscriber
+from schemas.catalog import CatalogDependencies, PreviewDependencies
 from schemas.wizard import WizardState
 
 # --- App Setup ---
@@ -125,6 +126,10 @@ def _new_session_state(now: float | None = None) -> dict[str, Any]:
         "end_date": None,
         "parsed_tasks": [],
         "analysis_by_date": {},
+        "chatroom_catalog": None,
+        "catalog_sheet_names": (),
+        "catalog_dependencies": CatalogDependencies(query_chatrooms=_get_chatrooms),
+        "preview_dependencies": PreviewDependencies(fetch_messages=_get_messages),
         "wizard": WizardState(),
         "last_access": _session_clock() if now is None else now,
     }
