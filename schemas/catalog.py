@@ -1,5 +1,5 @@
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
@@ -22,6 +22,7 @@ class CatalogDependencies:
     query_chatrooms: Callable[[Any], Sequence[tuple[str, str]]]
     database_key: str = "ddb"
     excel_writer_factory: Callable[[str], Any] | None = None
+    manual_group_sheet_map: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

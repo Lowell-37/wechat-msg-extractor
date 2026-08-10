@@ -1,12 +1,12 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
 from core.validation import ValidationError
-from schemas.catalog import PreviewDependencies
+from schemas.catalog import ChatroomOption, PreviewDependencies
 from schemas.wizard import WizardState
 from services.preview import build_preview
-from services.wizard import mark_connected
+from services.wizard import mark_connected, store_preview, update_selection
 
 
 def _task_message() -> str:
@@ -20,6 +20,7 @@ def test_build_preview_persists_valid_selection_and_grouped_tasks():
     state = {
         "ddb": database,
         "wizard": wizard,
+        "chatroom_catalog": (ChatroomOption("room-1", "项目群"),),
         "catalog_sheet_names": ("项目群",),
         "preview_dependencies": PreviewDependencies(
             fetch_messages=lambda received_database, *_: [
@@ -59,6 +60,7 @@ def test_build_preview_preserves_existing_state_when_fetch_fails():
     state = {
         "ddb": object(),
         "wizard": wizard,
+        "chatroom_catalog": (ChatroomOption("room-1", "项目群"),),
         "catalog_sheet_names": ("项目群",),
         "selected_group": "old-room",
         "selected_sheet": "项目群",
@@ -108,3 +110,47 @@ def test_build_preview_validates_sheet_before_fetching_messages():
         )
 
     assert calls == []
+
+
+def test_build_preview_rejects_group_missing_from_cached_catalog_before_fetching():
+    wizard = WizardState()
+    mark_connected(wizard)
+    update_selection(
+        wizard,
+        "room-old",
+        "旧项目群",
+        date(2026, 7, 1),
+        date(2026, 7, 2),
+        "项目群",
+    )
+    store_preview(wizard, ["existing"])
+    calls = []
+    state = {
+        "ddb": object(),
+        "wizard": wizard,
+        "chatroom_catalog": (ChatroomOption("room-1", "项目群"),),
+        "catalog_sheet_names": ("项目群",),
+        "selected_group": "room-old",
+        "selected_sheet": "项目群",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-02",
+        "preview_dependencies": PreviewDependencies(
+            fetch_messages=lambda *_: calls.append(True),
+        ),
+    }
+
+    with pytest.raises(ValidationError, match="群聊"):
+        build_preview(
+            state,
+            "room-stale",
+            "项目群",
+            "2026-08-01",
+            "2026-08-02",
+            "项目群",
+        )
+
+    assert calls == []
+    assert state["selected_group"] == "room-old"
+    assert wizard.selection.group_id == "room-old"
+    assert wizard.preview_tasks == ["existing"]
+    assert wizard.preview_ready is True

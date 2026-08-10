@@ -26,7 +26,9 @@ def load_catalog(
         if writer is not None:
             writer.close()
 
-    matcher = SheetMatcher(list(sheet_names))
+    matcher = SheetMatcher(
+        list(sheet_names), manual_map=dict(dependencies.manual_group_sheet_map)
+    )
     suggested_sheets = matcher.match([display_name for _, display_name in chatrooms])
     catalog = tuple(
         ChatroomOption(

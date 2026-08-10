@@ -3,7 +3,7 @@ from collections.abc import MutableMapping
 from datetime import datetime
 from typing import Any
 
-from core.validation import parse_date_range, validate_sheet_name
+from core.validation import ValidationError, parse_date_range, validate_sheet_name
 from schemas.catalog import PreviewDependencies, PreviewResult, PreviewSummary
 from services.wizard import get_wizard, store_preview, update_selection
 
@@ -19,6 +19,7 @@ def build_preview(
     """Validate, fetch, parse, and atomically persist a preview selection."""
     start_value, end_value = parse_date_range(start_date, end_date)
     validated_sheet = validate_sheet_name(sheet_name, state.get("catalog_sheet_names", ()))
+    _validate_catalog_group(state, group_id, group_name)
     dependencies = _preview_dependencies(state)
     messages = dependencies.fetch_messages(
         state[dependencies.database_key], group_id, start_value, end_value, False
@@ -64,6 +65,17 @@ def _preview_dependencies(state: MutableMapping[str, Any]) -> PreviewDependencie
     if not isinstance(dependencies, PreviewDependencies):
         raise TypeError("Preview dependencies are not configured")
     return dependencies
+
+
+def _validate_catalog_group(
+    state: MutableMapping[str, Any], group_id: str, group_name: str
+) -> None:
+    catalog = state.get("chatroom_catalog")
+    if not isinstance(catalog, tuple) or not any(
+        option.chat_id == group_id and option.display_name == group_name
+        for option in catalog
+    ):
+        raise ValidationError("群聊选择无效或已过期")
 
 
 def _parse_messages(

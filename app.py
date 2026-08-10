@@ -128,7 +128,10 @@ def _new_session_state(now: float | None = None) -> dict[str, Any]:
         "analysis_by_date": {},
         "chatroom_catalog": None,
         "catalog_sheet_names": (),
-        "catalog_dependencies": CatalogDependencies(query_chatrooms=_get_chatrooms),
+        "catalog_dependencies": CatalogDependencies(
+            query_chatrooms=_get_chatrooms,
+            manual_group_sheet_map=config.matching.group_sheet_map,
+        ),
         "preview_dependencies": PreviewDependencies(fetch_messages=_get_messages),
         "wizard": WizardState(),
         "last_access": _session_clock() if now is None else now,

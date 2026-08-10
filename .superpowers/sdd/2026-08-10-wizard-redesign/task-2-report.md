@@ -88,3 +88,88 @@ All checks passed!
 - Pytest needs approved host access because the sandbox cannot access the host
   temporary directory. This is environmental; the reported verification used
   the configured Python 3.13 executable successfully.
+
+## Fix Round 1: Configured Sheet Mapping and Catalog Membership
+
+### Implementation
+
+- `CatalogDependencies` now accepts an injected `manual_group_sheet_map`; the
+  catalog service passes it to `SheetMatcher`, and new production session state
+  binds `config.matching.group_sheet_map`.
+- `build_preview()` now requires an exact `(group_id, group_name)` match in the
+  immutable cached catalog before database access. A stale or arbitrary group
+  raises a validation error before any fetch or wizard/session mutation.
+- Added regressions for injected mapping, production config binding, and stale
+  group rejection while preserving a prior selection and preview.
+
+### RED
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m pytest tests/test_catalog_service.py tests/test_preview_service.py -q
+```
+
+```text
+..FF...F
+FAILED test_catalog_uses_injected_manual_group_sheet_map
+TypeError: CatalogDependencies.__init__() got an unexpected keyword argument 'manual_group_sheet_map'
+FAILED test_new_production_session_binds_configured_manual_group_sheet_map
+AssertionError: assert '' == '配置工作表'
+FAILED test_build_preview_rejects_group_missing_from_cached_catalog_before_fetching
+TypeError: 'NoneType' object is not iterable
+3 failed, 5 passed in 0.75s
+```
+
+The failures showed the missing injected mapping field, missing production
+config binding, and that an invalid group still reached the message-fetch path.
+
+### GREEN
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m pytest tests/test_catalog_service.py tests/test_preview_service.py -q
+```
+
+```text
+8 passed in 0.66s
+```
+
+### Focused Regression
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m pytest tests/test_catalog_service.py tests/test_preview_service.py tests/test_app_routes.py tests/test_chatrooms.py tests/test_validation.py -q
+```
+
+```text
+38 passed in 0.97s
+```
+
+### Full Verification
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m pytest
+```
+
+```text
+93 passed in 1.31s
+```
+
+```powershell
+& 'C:\Users\qiuji\AppData\Local\Programs\Python\Python313\python.exe' -m ruff check .
+```
+
+```text
+All checks passed!
+```
+
+### Self-review
+
+- The manual mapping is an explicit dependency with a safe empty default, and
+  the production binding uses the same configured map as legacy matching.
+- Catalog membership compares both ID and display name, so a mismatched ID or
+  stale name cannot be fetched or committed.
+- All validation, including membership, occurs before external fetch; the
+  regression asserts zero fetches and unchanged wizard preview state.
+
+### Concerns
+
+- No functional concerns. Legacy route composition and `asyncio.to_thread`
+  placement remain intentionally deferred to Task 3.
