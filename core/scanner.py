@@ -17,16 +17,22 @@ class WeChatInfo:
 
 
 class WeChatScanner:
+    _PROCESS_NAMES = {"wechat.exe", "wechatappex.exe", "weixin.exe"}
     _INSTALL_BASES = [
         r"C:\Program Files\Tencent\WeChat",
         r"C:\Program Files (x86)\Tencent\WeChat",
+        r"C:\Program Files\Tencent\Weixin",
+        r"C:\Program Files (x86)\Tencent\Weixin",
         r"D:\software\WeChat",
     ]
     _DATA_BASES = [
+        os.path.expandvars(r"%USERPROFILE%\Documents\xwechat_files"),
+        os.path.expandvars(r"%USERPROFILE%\xwechat_files"),
         os.path.expandvars(r"%APPDATA%\Tencent\WeChat"),
         r"D:\WeChat Store\WeChat Files\WeChat Files",
         r"D:\WeChat Store\WeChat Files",
     ]
+    _XWECHAT_CONFIG_DIR = os.path.expandvars(r"%APPDATA%\Tencent\xwechat\config")
 
     def __init__(self, install_path: Optional[str] = None, data_dir: Optional[str] = None):
         self._custom_install = install_path
@@ -73,7 +79,10 @@ class WeChatScanner:
     def _detect_process(self, info: WeChatInfo):
         try:
             for proc in psutil.process_iter(["pid", "name", "exe"]):
-                if proc.info["name"] and proc.info["name"].lower() == "wechat.exe":
+                if (
+                    proc.info["name"]
+                    and proc.info["name"].lower() in self._PROCESS_NAMES
+                ):
                     info.pid = proc.info["pid"]
                     info.exe_path = proc.info["exe"]
                     if not info.version and proc.info["exe"]:
@@ -89,7 +98,7 @@ class WeChatScanner:
     def _detect_data_dir(self, info: WeChatInfo):
         paths = [self._custom_data] if self._custom_data else []
         if not self._custom_data:
-            paths = self._DATA_BASES
+            paths = self._xwechat_data_bases(info) + list(self._DATA_BASES)
 
         for base in paths:
             if not base or not os.path.exists(base):
@@ -109,8 +118,50 @@ class WeChatScanner:
                             info.data_dir = root
                             info.db_files = db_files
                         return
+                    message_files = sorted(
+                        f
+                        for f in files
+                        if f.startswith("message_") and f.endswith(".db")
+                    )
+                    if message_files:
+                        info.data_dir = root
+                        info.db_files = message_files
+                        info.errors.append(
+                            "检测到新版微信 message_*.db 数据；"
+                            "当前版本暂不支持解密与导出"
+                        )
+                        return
             except Exception as e:
                 info.errors.append(f"读取数据目录失败: {e}")
 
         base = self._custom_data or self._DATA_BASES[0]
         info.errors.append(f"微信数据目录不存在: {base}")
+
+    def _xwechat_data_bases(self, info: WeChatInfo) -> list[str]:
+        bases = []
+        for config_path in sorted(
+            glob.glob(os.path.join(self._XWECHAT_CONFIG_DIR, "*.ini"))
+        ):
+            try:
+                with open(config_path, encoding="utf-8-sig") as config_file:
+                    configured_root = config_file.read().strip().strip('"')
+            except OSError as exc:
+                info.errors.append(f"读取新版微信配置失败: {exc}")
+                continue
+            if not configured_root:
+                continue
+            if os.path.basename(os.path.normpath(configured_root)).lower() == "xwechat_files":
+                candidates = [configured_root]
+            else:
+                candidates = [
+                    os.path.join(configured_root, "xwechat_files"),
+                    configured_root,
+                ]
+            for candidate in candidates:
+                normalized = os.path.normcase(os.path.normpath(candidate))
+                if all(
+                    os.path.normcase(os.path.normpath(base)) != normalized
+                    for base in bases
+                ):
+                    bases.append(candidate)
+        return bases
