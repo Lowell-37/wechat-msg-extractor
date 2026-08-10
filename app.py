@@ -31,6 +31,7 @@ from core.validation import (
     validate_sheet_name,
 )
 from core.voice import VoiceTranscriber
+from schemas.wizard import WizardState
 
 # --- App Setup ---
 BASE_DIR = Path(__file__).parent
@@ -124,6 +125,7 @@ def _new_session_state(now: float | None = None) -> dict[str, Any]:
         "end_date": None,
         "parsed_tasks": [],
         "analysis_by_date": {},
+        "wizard": WizardState(),
         "last_access": _session_clock() if now is None else now,
     }
 
