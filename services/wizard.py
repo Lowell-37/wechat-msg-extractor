@@ -79,6 +79,27 @@ def update_session_selection(
     return changed
 
 
+def invalidate_workbook_state(state: MutableMapping[str, Any]) -> None:
+    """Discard session state derived from a replaced Excel workbook."""
+    state["chatroom_catalog"] = None
+    state["catalog_sheet_names"] = ()
+    state["selected_sheet"] = None
+    state["parsed_tasks"] = []
+    state["analysis_by_date"] = {}
+
+    wizard = get_wizard(state)
+    wizard.selection.sheet_name = ""
+    wizard.preview_tasks.clear()
+    wizard.selected_task_ids.clear()
+    wizard.preview_ready = False
+    wizard.output_path = ""
+    wizard.enable_ai = False
+    wizard.enable_voice = False
+    wizard.privacy_acknowledged = False
+    if wizard.active_step > WizardStep.SELECT:
+        wizard.active_step = WizardStep.SELECT
+
+
 def store_preview(wizard: WizardState, tasks: Sequence[Any]) -> None:
     """Persist a generated preview without automatically advancing the wizard."""
     if not wizard.connected or not has_complete_selection(wizard.selection):

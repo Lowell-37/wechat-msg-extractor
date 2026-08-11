@@ -54,7 +54,7 @@ def activate_template(
         resolved_path = str(destination.resolve())
         try:
             _persist_template_path(Path(config_path), resolved_path)
-        except OSError as exc:
+        except Exception as exc:
             destination.unlink(missing_ok=True)
             raise TemplateUploadError(f"无法保存模板配置：{exc}") from exc
         config.excel.template_path = resolved_path

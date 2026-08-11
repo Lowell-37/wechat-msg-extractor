@@ -59,6 +59,17 @@ def test_connect_step_has_labeled_status_controls_and_collapsed_manual_key(clien
     assert '<details class="advanced-options" open' not in response.text
 
 
+def test_connect_step_has_excel_template_picker(client):
+    response = client.get("/")
+
+    assert "选择 Excel 模板" in response.text
+    assert 'hx-post="/api/template"' in response.text
+    assert 'enctype="multipart/form-data"' in response.text
+    assert 'type="file"' in response.text
+    assert 'name="template"' in response.text
+    assert 'accept=".xlsx"' in response.text
+
+
 def test_runtime_install_path_marks_client_ready_without_version(client, monkeypatch):
     class Scanner:
         def __init__(self, **kwargs):

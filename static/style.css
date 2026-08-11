@@ -290,6 +290,7 @@ a {
 
 .environment-card,
 .connection-card,
+.template-card,
 .advanced-options,
 .card {
     border: 1px solid var(--line);
@@ -324,6 +325,57 @@ a {
 .section-heading p,
 .connection-card p {
     font-size: 13px;
+}
+
+.template-card {
+    display: grid;
+    gap: 16px;
+    padding: 18px 19px;
+}
+
+.template-card__summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.template-card__summary h2,
+.template-card__summary p {
+    margin: 0;
+}
+
+.template-card__name {
+    margin-top: 6px !important;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.template-upload-form {
+    display: grid;
+    gap: 8px;
+}
+
+.template-upload-form input[type="file"] {
+    min-width: 0;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+}
+
+.template-upload-status {
+    margin: 0;
+    font-weight: 650;
+}
+
+.template-upload-status--success {
+    color: var(--green-strong);
+}
+
+.template-upload-status--error {
+    color: var(--danger);
 }
 
 .environment-list {

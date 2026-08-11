@@ -93,6 +93,8 @@ def create_app() -> FastAPI:
         name="static",
     )
     application.state.config = config
+    application.state.base_dir = BASE_DIR
+    application.state.config_path = BASE_DIR / "config.yaml"
     application.state.templates = templates
     application.state.logger = logger
     application.state.progress_hub = progress_hub

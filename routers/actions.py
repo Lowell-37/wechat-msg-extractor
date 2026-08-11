@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from core import dbutils
@@ -27,10 +27,12 @@ from services import export as export_service
 from services.catalog import filter_catalog, find_catalog_option, load_catalog
 from services.preview import build_legacy_preview, build_preview
 from services.session import dispose_session, get_session, new_session_state, session_state
+from services.template_store import TemplateUploadError, activate_template
 from services.wechat_explorer import DEFAULT_EXPLORER_BASE_URL
 from services.wizard import (
     get_wizard,
     has_complete_selection,
+    invalidate_workbook_state,
     mark_connected,
     request_step,
     store_export_preferences,
@@ -60,6 +62,44 @@ async def extract_key(request: Request):
 @router.post("/api/key/validate")
 async def validate_key(request: Request, key: str = Form(...)):
     return _store_connection(request, key, "验证通过")
+
+
+@router.post("/api/template")
+async def upload_template(
+    request: Request, template: Annotated[UploadFile, File()]
+):
+    session_id, state = get_session(request)
+    try:
+        activation = activate_template(
+            template.file,
+            template.filename or "",
+            base_dir=request.app.state.base_dir,
+            config_path=request.app.state.config_path,
+            config=request.app.state.config,
+        )
+    except TemplateUploadError as exc:
+        response = _connection_template(
+            request,
+            state,
+            template_status={"tone": "error", "message": str(exc)},
+            status_code=400,
+        )
+        return _with_session_cookie(request, response, session_id)
+
+    for current_state in session_state.values():
+        invalidate_workbook_state(current_state)
+    response = _connection_template(
+        request,
+        state,
+        template_status={
+            "tone": "success",
+            "message": (
+                f"已启用 {activation.filename}，"
+                f"{len(activation.sheet_names)} 个可用 Sheet。"
+            ),
+        },
+    )
+    return _with_session_cookie(request, response, session_id)
 
 
 @router.get("/api/chatrooms/list")
@@ -583,8 +623,9 @@ def _store_connection(
 def _connection_template(
     request: Request,
     state: dict[str, Any],
-    connection_status: dict[str, str],
+    connection_status: dict[str, str] | None = None,
     *,
+    template_status: dict[str, str] | None = None,
     status_code: int = 200,
 ):
     wizard = get_wizard(state)
@@ -597,6 +638,7 @@ def _connection_template(
             connection_status=connection_status,
         )
     )
+    context["template_status"] = template_status
     return _template(
         request,
         "steps/connect.html",

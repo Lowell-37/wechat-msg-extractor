@@ -1,14 +1,25 @@
 import asyncio
+import io
 import logging
 from datetime import date, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 import app as app_module
 from core.task_parser import ParsedTask
+
+
+def _uploaded_workbook_bytes(sheet_name="项目群"):
+    stream = io.BytesIO()
+    workbook = Workbook()
+    workbook.active.title = sheet_name
+    workbook.save(stream)
+    workbook.close()
+    return stream.getvalue()
 
 
 @pytest.fixture(autouse=True)
@@ -280,6 +291,80 @@ def test_connection_failure_is_html_escaped(monkeypatch):
     assert response.status_code == 400
     assert "&lt;unsafe&gt;" in response.text
     assert "<unsafe>" not in response.text
+
+
+def test_template_upload_persists_default_and_invalidates_workbook_state(
+    monkeypatch, tmp_path
+):
+    old_template = tmp_path / "old.xlsx"
+    old_template.write_bytes(_uploaded_workbook_bytes("旧模板"))
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("server:\n  port: 8888\n", encoding="utf-8")
+    monkeypatch.setattr(app_module.config.excel, "template_path", str(old_template))
+    monkeypatch.setattr(app_module.app.state, "base_dir", tmp_path, raising=False)
+    monkeypatch.setattr(
+        app_module.app.state, "config_path", config_path, raising=False
+    )
+    client = TestClient(app_module.app)
+    client.get("/")
+    session_id = client.cookies["session_id"]
+    state = app_module.session_state[session_id]
+    state["chatroom_catalog"] = (object(),)
+    state["catalog_sheet_names"] = ("旧模板",)
+    state["selected_sheet"] = "旧模板"
+    state["parsed_tasks"] = [object()]
+    state["analysis_by_date"] = {"2026-08-11": "分析"}
+    state["wizard"].selection.sheet_name = "旧模板"
+    state["wizard"].preview_ready = True
+
+    response = client.post(
+        "/api/template",
+        files={
+            "template": (
+                "../../任务安排.xlsx",
+                _uploaded_workbook_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    persisted = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert response.status_code == 200
+    assert "任务安排.xlsx" in response.text
+    assert "1 个可用 Sheet" in response.text
+    assert Path(app_module.config.excel.template_path).exists()
+    assert persisted["excel"]["template_path"] == app_module.config.excel.template_path
+    assert state["chatroom_catalog"] is None
+    assert state["catalog_sheet_names"] == ()
+    assert state["selected_sheet"] is None
+    assert state["parsed_tasks"] == []
+    assert state["analysis_by_date"] == {}
+    assert state["wizard"].selection.sheet_name == ""
+    assert state["wizard"].preview_ready is False
+
+
+def test_invalid_template_upload_keeps_previous_default(monkeypatch, tmp_path):
+    old_template = tmp_path / "old.xlsx"
+    old_template.write_bytes(_uploaded_workbook_bytes("旧模板"))
+    monkeypatch.setattr(app_module.config.excel, "template_path", str(old_template))
+    monkeypatch.setattr(app_module.app.state, "base_dir", tmp_path, raising=False)
+    monkeypatch.setattr(
+        app_module.app.state,
+        "config_path",
+        tmp_path / "config.yaml",
+        raising=False,
+    )
+    client = TestClient(app_module.app)
+
+    response = client.post(
+        "/api/template",
+        files={"template": ("broken.xlsx", b"broken", "application/octet-stream")},
+    )
+
+    assert response.status_code == 400
+    assert "文件已损坏" in response.text
+    assert "old.xlsx" in response.text
+    assert app_module.config.excel.template_path == str(old_template)
 
 
 def test_explorer_token_failure_shows_api_specific_recovery(monkeypatch):

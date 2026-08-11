@@ -128,7 +128,7 @@ def test_config_write_failure_preserves_active_template(tmp_path, monkeypatch):
     config.excel.template_path = str(old_template)
 
     def fail_persist(config_path, template_path):
-        raise OSError("disk unavailable")
+        raise RuntimeError("serialization unavailable")
 
     monkeypatch.setattr(
         "services.template_store._persist_template_path", fail_persist

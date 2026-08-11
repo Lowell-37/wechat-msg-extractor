@@ -28,6 +28,47 @@
         {% include "components/status_message.html" %}
     </div>
 
+    <section class="template-card" aria-labelledby="template-title">
+        <div class="template-card__summary">
+            <div>
+                <h2 id="template-title">Excel 模板</h2>
+                <p class="template-card__name">{{ template_name }}</p>
+                <small>
+                    {% if template_available %}
+                    当前模板已就绪，重新选择后将作为本机默认模板。
+                    {% else %}
+                    当前模板不可用，请选择包含任务 Sheet 的 .xlsx 文件。
+                    {% endif %}
+                </small>
+            </div>
+            <span class="status-pill {{ 'status-ready' if template_available else 'status-warn' }}">
+                {{ '已就绪' if template_available else '需选择' }}
+            </span>
+        </div>
+        <form class="template-upload-form"
+              hx-post="/api/template"
+              hx-target="#wizard-workspace"
+              hx-swap="innerHTML"
+              hx-encoding="multipart/form-data"
+              enctype="multipart/form-data">
+            <label for="excel-template">选择 Excel 模板</label>
+            <div class="input-action-row">
+                <input id="excel-template"
+                       type="file"
+                       name="template"
+                       accept=".xlsx"
+                       required>
+                <button type="submit" class="btn btn-secondary">上传并设为默认</button>
+            </div>
+        </form>
+        {% if template_status %}
+        <p class="template-upload-status template-upload-status--{{ template_status.tone }}"
+           role="{{ 'alert' if template_status.tone == 'error' else 'status' }}">
+            {{ template_status.message }}
+        </p>
+        {% endif %}
+    </section>
+
     <section class="connection-card" aria-labelledby="automatic-title">
         <div>
             <h2 id="automatic-title">自动连接</h2>
