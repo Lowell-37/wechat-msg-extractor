@@ -133,7 +133,7 @@ class WeChatScanner:
                         info.db_files = message_files
                         info.errors.append(
                             "检测到新版微信 message_*.db 数据；"
-                            "当前版本暂不支持解密与导出"
+                            "需要手动提供 32 字节 raw key；自动提钥尚未实现"
                         )
                         return
             except Exception as e:
