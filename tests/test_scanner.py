@@ -93,4 +93,4 @@ def test_xwechat_configured_storage_discovers_new_message_databases(
 
     assert info.data_dir == str(message_dir)
     assert info.db_files == ["message_0.db", "message_1.db"]
-    assert any("新版微信" in error and "暂不支持" in error for error in info.errors)
+    assert any("新版微信" in error and "需要手动提供" in error for error in info.errors)
