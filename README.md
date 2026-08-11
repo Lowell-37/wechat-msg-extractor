@@ -4,18 +4,22 @@
 
 ## 功能
 
-- 自动检测微信版本、进程和数据目录
-- 自动提取数据库解密密钥并解密所有 MSG 分片库（MSG0~MSG3）
+- 自动检测旧版与新版微信进程、安装路径和数据目录
+- 支持旧版微信 MSG 分片库的密钥提取、解密与查询
+- 可识别新版微信 `message_*.db`，但当前版本暂不支持其密钥提取和解密导出
 - 解析 🚩M.D 任务格式的群聊消息
 - 将任务和情况分析写入 Excel 模板对应 Sheet
 - 支持群聊→Sheet 自动匹配和手动映射
-- Web 界面（FastAPI + htmx），操作流程清晰
+- Web 界面（FastAPI + htmx），使用单页三步向导
+- 返回、刷新和失败重试会保留有效的连接、选择与预览状态
 
 ## 使用流程
 
-1. **Step 1 鉴权**：自动扫描微信进程 → 提取密钥 → 解密数据库
-2. **Step 2 选群聊**：显示所有群聊列表，可搜索、选择目标群聊和对应 Sheet
-3. **Step 3 预览导出**：预览解析的任务消息，选择导出目标和输出路径
+1. **Step 1 连接微信**：检查客户端、进程和数据目录；旧版微信可自动提取密钥并验证数据库
+2. **Step 2 选择数据**：搜索群聊，选择目标 Sheet、日期范围和需要导出的任务
+3. **Step 3 预览导出**：确认任务、输出路径和隐私选项，查看实时进度并导出 Excel
+
+每一步都可以通过“上一步/下一步”返回或继续；修改群聊、日期或 Sheet 后，旧预览会自动失效并要求重新预览。
 
 ## 快速开始
 
@@ -35,9 +39,21 @@ py -m ruff check .
 py app.py
 ```
 
-Supported Python versions are `>=3.11,<3.14` (CI uses Python 3.13). The default
-server address is local-only: `http://127.0.0.1:8888`; it does not expose the
-application to the network.
+Supported Python versions are `>=3.11,<3.14` (CI uses Python 3.13; the workflow
+uses `python`, not the Windows `py` launcher, to select that interpreter). The
+default server address is local-only: `http://127.0.0.1:8888`; it does not
+expose the application to the network.
+
+### 新版微信兼容性
+
+微信 4.x 通常运行 `WeChatAppEx.exe`/`Weixin.exe`，并将消息保存为
+`message_*.db`。本项目会识别这些进程和文件并显示兼容性提示，但当前的
+`pywxdump` 解密链路只支持旧版 `WeChat.exe` 与 `MSG*.db`。请勿覆盖微信原始
+目录；如需读取新版历史消息，应先使用支持微信 4.x 的专用导出工具生成副本，
+再导入本项目处理。
+
+启用 AI 分析或语音转写时，相关消息内容会发送到你配置的外部服务；仅使用
+本地解析和 Excel 导出时，数据默认留在本机。
 
 ## 配置
 
