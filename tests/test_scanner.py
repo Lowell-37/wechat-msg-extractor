@@ -44,9 +44,7 @@ def test_process_runtime_path_removes_only_stale_install_warning(monkeypatch):
         "core.scanner.psutil.process_iter",
         lambda attributes: [process],
     )
-    compatibility_warning = (
-        "检测到新版微信 message_*.db 数据；当前版本暂不支持解密与导出"
-    )
+    compatibility_warning = "检测到新版微信 message_*.db 数据；请使用本机 API"
     info = WeChatInfo(
         errors=[
             r"微信安装目录不存在: C:\Program Files\Tencent\WeChat",
@@ -93,4 +91,6 @@ def test_xwechat_configured_storage_discovers_new_message_databases(
 
     assert info.data_dir == str(message_dir)
     assert info.db_files == ["message_0.db", "message_1.db"]
-    assert any("新版微信" in error and "需要手动提供" in error for error in info.errors)
+    assert any(
+        "新版微信" in error and "WechatExplorer" in error for error in info.errors
+    )

@@ -2,6 +2,8 @@ wechat:
   auto_detect: true
   data_dir: null
   version_dir: null
+  # WechatExplorer 本机 API；令牌仅通过 WECHATEXPLORER_API_TOKEN 环境变量提供。
+  explorer_base_url: "http://127.0.0.1:6131/api/v1"
 
 excel:
   template_path: "D:/assistants/assignment-analysis.xlsx"

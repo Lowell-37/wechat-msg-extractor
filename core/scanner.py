@@ -133,7 +133,8 @@ class WeChatScanner:
                         info.db_files = message_files
                         info.errors.append(
                             "检测到新版微信 message_*.db 数据；"
-                            "需要手动提供 32 字节 raw key；自动提钥尚未实现"
+                            "请启动 WechatExplorer 本机 API，并设置 "
+                            "WECHATEXPLORER_API_TOKEN 后重新连接"
                         )
                         return
             except Exception as e:

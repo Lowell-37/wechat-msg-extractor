@@ -27,6 +27,7 @@ from services import export as export_service
 from services.catalog import filter_catalog, find_catalog_option, load_catalog
 from services.preview import build_legacy_preview, build_preview
 from services.session import dispose_session, get_session, new_session_state, session_state
+from services.wechat_explorer import DEFAULT_EXPLORER_BASE_URL
 from services.wizard import (
     get_wizard,
     has_complete_selection,
@@ -523,6 +524,10 @@ def _store_connection(
                 "install_path": config.wechat.version_dir,
                 "data_dir": config.wechat.data_dir,
             }
+        if config.wechat.explorer_base_url != DEFAULT_EXPLORER_BASE_URL:
+            connection_kwargs["explorer_base_url"] = (
+                config.wechat.explorer_base_url
+            )
         connected = request.app.state.connect_wechat(key, **connection_kwargs)
 
         dispose_session(session_id)
@@ -683,6 +688,9 @@ def _get_chatrooms(
     ddb: DecryptedDB,
 ) -> list[tuple[str, str, int | None, int]]:
     """Return chatroom identities and one-time message metadata."""
+    query_chatrooms = getattr(ddb, "query_chatrooms", None)
+    if callable(query_chatrooms):
+        return query_chatrooms()
     chatroom_ids: set[str] = set()
     metadata: dict[str, tuple[int | None, int]] = {}
     try:
@@ -826,13 +834,17 @@ def _get_messages(
             59,
         ).timestamp()
     )
-    rows = ddb.execute(
-        "SELECT localId, Type, SubType, IsSender, CreateTime, "
-        "StrContent, StrTalker FROM MSG WHERE StrTalker=? "
-        "AND CreateTime BETWEEN ? AND ? AND Type=1 "
-        "ORDER BY CreateTime ASC",
-        (chat_id, start_ts, end_ts),
-    )
+    query_messages = getattr(ddb, "query_messages", None)
+    if callable(query_messages):
+        rows = query_messages(chat_id, start_ts, end_ts)
+    else:
+        rows = ddb.execute(
+            "SELECT localId, Type, SubType, IsSender, CreateTime, "
+            "StrContent, StrTalker FROM MSG WHERE StrTalker=? "
+            "AND CreateTime BETWEEN ? AND ? AND Type=1 "
+            "ORDER BY CreateTime ASC",
+            (chat_id, start_ts, end_ts),
+        )
     parser = None
     messages = []
     for row in rows:

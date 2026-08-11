@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.dbutils import MergedMsgDB, WeChatDB
+from services.wechat_explorer import (
+    DEFAULT_EXPLORER_BASE_URL,
+    WechatExplorerError,
+    connect_wechat_explorer,
+)
 
 
 class ConnectionError(Exception):
@@ -12,8 +17,8 @@ class ConnectionError(Exception):
 
 @dataclass
 class ConnectedWechat:
-    manager: WeChatDB
-    database: MergedMsgDB
+    manager: Any
+    database: Any
     shard_count: int
     table_count: int
 
@@ -44,6 +49,7 @@ def connect_wechat(
     *,
     install_path: str | None = None,
     data_dir: str | None = None,
+    explorer_base_url: str = DEFAULT_EXPLORER_BASE_URL,
 ) -> ConnectedWechat:
     """Connect to and validate every available WeChat message database shard."""
     manager_kwargs = {}
@@ -58,6 +64,24 @@ def connect_wechat(
         )
     except Exception as exc:
         raise ConnectionError(str(exc)) from exc
+
+    info = getattr(manager, "get_info", lambda: None)()
+    if info and any(
+        filename.lower().startswith("message_") and filename.lower().endswith(".db")
+        for filename in getattr(info, "db_files", [])
+    ):
+        try:
+            explorer_manager, explorer_database = connect_wechat_explorer(
+                base_url=explorer_base_url
+            )
+        except WechatExplorerError as exc:
+            raise ConnectionError(str(exc)) from exc
+        return ConnectedWechat(
+            manager=explorer_manager,
+            database=explorer_database,
+            shard_count=1,
+            table_count=1,
+        )
 
     if not success:
         raise ConnectionError(message)

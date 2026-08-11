@@ -6,7 +6,7 @@
 
 - 自动检测旧版与新版微信进程、安装路径和数据目录
 - 支持旧版微信 MSG 分片库的密钥提取、解密与查询
-- 可识别新版微信 `message_*.db`，但当前版本暂不支持其密钥提取和解密导出
+- 通过 WechatExplorer 的本机 API 读取新版微信 `message_*.db`（旧版链路保留）
 - 解析 🚩M.D 任务格式的群聊消息
 - 将任务和情况分析写入 Excel 模板对应 Sheet
 - 支持群聊→Sheet 自动匹配和手动映射
@@ -15,7 +15,7 @@
 
 ## 使用流程
 
-1. **Step 1 连接微信**：检查客户端、进程和数据目录；旧版微信可自动提取密钥并验证数据库
+1. **Step 1 连接微信**：检查客户端、进程和数据目录；旧版微信可自动提取密钥，新版微信通过 WechatExplorer 本机 API 连接
 2. **Step 2 选择数据**：搜索群聊，选择目标 Sheet、日期范围和需要导出的任务
 3. **Step 3 预览导出**：确认任务、输出路径和隐私选项，查看实时进度并导出 Excel
 
@@ -47,10 +47,20 @@ expose the application to the network.
 ### 新版微信兼容性
 
 微信 4.x 通常运行 `WeChatAppEx.exe`/`Weixin.exe`，并将消息保存为
-`message_*.db`。本项目会识别这些进程和文件并显示兼容性提示，但当前的
-`pywxdump` 解密链路只支持旧版 `WeChat.exe` 与 `MSG*.db`。请勿覆盖微信原始
-目录；如需读取新版历史消息，应先使用支持微信 4.x 的专用导出工具生成副本，
-再导入本项目处理。
+`message_*.db`。旧版 `WeChat.exe` 与 `MSG*.db` 继续使用内置 `pywxdump`
+链路；新版通过 [WechatExplorer](https://github.com/Wxw-Gu/WechatExplorer)
+的本机 HTTP API 读取。请在 WechatExplorer 的 API Center 开启 API，然后仅在
+启动本项目的终端设置令牌（不要写入 `config.yaml`、截图或提交）：
+
+```powershell
+$env:WECHATEXPLORER_API_TOKEN = "在 WechatExplorer API Center 生成的令牌"
+py app.py
+```
+
+默认地址为 `http://127.0.0.1:6131/api/v1`，且程序只接受 `localhost`、
+`127.0.0.1` 或 `::1` 等回环地址。若你的本机 API 使用其他端口，可在
+`config.yaml` 的 `wechat.explorer_base_url` 修改；令牌始终只从环境变量读取。
+请勿覆盖微信原始目录。
 
 启用 AI 分析或语音转写时，相关消息内容会发送到你配置的外部服务；仅使用
 本地解析和 Excel 导出时，数据默认留在本机。

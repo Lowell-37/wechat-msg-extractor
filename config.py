@@ -9,6 +9,7 @@ class WeChatConfig:
     auto_detect: bool = True
     data_dir: Optional[str] = None
     version_dir: Optional[str] = None
+    explorer_base_url: str = "http://127.0.0.1:6131/api/v1"
 
 
 @dataclass
