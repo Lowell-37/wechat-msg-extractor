@@ -50,8 +50,17 @@ expose the application to the network.
 微信 4.x 通常运行 `WeChatAppEx.exe`/`Weixin.exe`，并将消息保存为
 `message_*.db`。旧版 `WeChat.exe` 与 `MSG*.db` 继续使用内置 `pywxdump`
 链路；新版通过 [WechatExplorer](https://github.com/Wxw-Gu/WechatExplorer)
-的本机 HTTP API 读取。请在 WechatExplorer 的 API Center 开启 API，然后仅在
-启动本项目的终端设置令牌（不要写入 `config.yaml`、截图或提交）：
+的本机 HTTP API 读取。请在 WechatExplorer 的 API Center 开启 API，并生成一个
+新 Token。推荐通过无回显的本机 PowerShell 提示输入，并执行安全凭据命令；命令
+会将 Token 作为 Windows 机器级 DPAPI 密文保存到 Git 忽略的
+`local/secrets/` 目录，随后用本机 API 验证。不要把 Token 写入
+`config.yaml`、截图或提交。
+
+```powershell
+.\scripts\save_wechat_explorer_token.ps1
+```
+
+需要临时覆盖已保存的 Token 时，可仅在启动本项目的终端设置环境变量：
 
 ```powershell
 $env:WECHATEXPLORER_API_TOKEN = "在 WechatExplorer API Center 生成的令牌"
@@ -60,8 +69,9 @@ py app.py
 
 默认地址为 `http://127.0.0.1:6131/api/v1`，且程序只接受 `localhost`、
 `127.0.0.1` 或 `::1` 等回环地址。若你的本机 API 使用其他端口，可在
-`config.yaml` 的 `wechat.explorer_base_url` 修改；令牌始终只从环境变量读取。
-请勿覆盖微信原始目录。
+`config.yaml` 的 `wechat.explorer_base_url` 修改。持久化凭据使用 Windows
+`CRYPTPROTECT_LOCAL_MACHINE`，因此同一台机器上能读取密文文件的本地用户也可
+使用它；环境变量的优先级高于持久化凭据。请勿覆盖微信原始目录。
 
 启用 AI 分析或语音转写时，相关消息内容会发送到你配置的外部服务；仅使用
 本地解析和 Excel 导出时，数据默认留在本机。

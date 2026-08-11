@@ -377,7 +377,7 @@ def test_explorer_token_failure_shows_api_specific_recovery(monkeypatch):
     response = client.post("/api/key/extract")
 
     assert response.status_code == 400
-    assert "请在 WechatExplorer 的 API Center 开启本机 API 并设置令牌后重试。" in response.text
+    assert "请运行本机安全凭据设置，或临时设置环境变量后重试。" in response.text
     assert "可在高级选项中输入密钥" not in response.text
 
 

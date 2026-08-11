@@ -2,7 +2,7 @@ wechat:
   auto_detect: true
   data_dir: null
   version_dir: null
-  # WechatExplorer 本机 API；令牌仅通过 WECHATEXPLORER_API_TOKEN 环境变量提供。
+  # WechatExplorer 本机 API；令牌使用本机 DPAPI 凭据存储，环境变量可临时覆盖。
   explorer_base_url: "http://127.0.0.1:6131/api/v1"
 
 excel:

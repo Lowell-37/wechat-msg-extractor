@@ -1,16 +1,43 @@
 """Loopback-only bridge for WechatExplorer's local HTTP API."""
 
 import os
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+
+from services.credential_store import (
+    CredentialStoreError,
+    load_persisted_token,
+)
 
 DEFAULT_EXPLORER_BASE_URL = "http://127.0.0.1:6131/api/v1"
 
 
 class WechatExplorerError(RuntimeError):
     """Raised when the local WechatExplorer API cannot be used safely."""
+
+
+def resolve_token(
+    explicit: str | None,
+    loader: Callable[[], str | None] = load_persisted_token,
+) -> str:
+    """Resolve a Token without exposing persistence details to callers."""
+    for candidate in (explicit, os.environ.get("WECHATEXPLORER_API_TOKEN")):
+        if candidate and candidate.strip():
+            return candidate.strip()
+    try:
+        token = loader()
+    except CredentialStoreError as exc:
+        raise WechatExplorerError(
+            "无法读取已保存的 WechatExplorer Token；请重新保存凭据"
+        ) from exc
+    if not token or not token.strip():
+        raise WechatExplorerError(
+            "尚未保存 WechatExplorer Token；请运行安全凭据设置"
+        )
+    return token.strip()
 
 
 def _validate_base_url(base_url: str) -> str:
@@ -38,21 +65,15 @@ class WechatExplorerClient:
         base_url: str = DEFAULT_EXPLORER_BASE_URL,
         *,
         token: str | None = None,
+        token_loader: Callable[[], str | None] = load_persisted_token,
         transport: httpx.BaseTransport | None = None,
         timeout: float = 5.0,
     ):
         self.base_url = _validate_base_url(base_url)
-        token = token if token is not None else os.environ.get(
-            "WECHATEXPLORER_API_TOKEN"
-        )
-        if not token or not token.strip():
-            raise WechatExplorerError(
-                "未设置 WECHATEXPLORER_API_TOKEN；请在 WechatExplorer API Center 获取令牌后，"
-                "仅在启动本项目的终端中设置该环境变量"
-            )
+        token = resolve_token(token, token_loader)
         self._client = httpx.Client(
             base_url=self.base_url,
-            headers={"Authorization": f"Bearer {token.strip()}"},
+            headers={"Authorization": f"Bearer {token}"},
             transport=transport,
             timeout=timeout,
         )

@@ -2,7 +2,12 @@ import httpx
 import pytest
 
 from core.connection import connect_wechat
-from services.wechat_explorer import WechatExplorerClient, WechatExplorerError
+from services.credential_store import CredentialStoreError
+from services.wechat_explorer import (
+    WechatExplorerClient,
+    WechatExplorerError,
+    resolve_token,
+)
 
 
 def test_explorer_client_only_allows_loopback_api_addresses(monkeypatch):
@@ -81,6 +86,62 @@ def test_explorer_client_does_not_include_token_in_connection_errors(monkeypatch
     finally:
         client.close()
 
+    assert "private-token" not in str(error.value)
+
+
+def test_explicit_and_environment_tokens_override_persisted(monkeypatch):
+    monkeypatch.setenv("WECHATEXPLORER_API_TOKEN", "environment-token")
+
+    assert resolve_token("explicit-token", lambda: "stored-token") == (
+        "explicit-token"
+    )
+    assert resolve_token(None, lambda: "stored-token") == "environment-token"
+
+
+def test_blank_explicit_token_does_not_hide_environment_token(monkeypatch):
+    monkeypatch.setenv("WECHATEXPLORER_API_TOKEN", "environment-token")
+
+    assert resolve_token("   ", lambda: "stored-token") == "environment-token"
+
+
+def test_client_falls_back_to_persisted_token(monkeypatch):
+    monkeypatch.delenv("WECHATEXPLORER_API_TOKEN", raising=False)
+
+    def respond(request):
+        assert request.headers["Authorization"] == "Bearer stored-token"
+        return httpx.Response(
+            200,
+            json={
+                "count": 1,
+                "chatrooms": [
+                    {
+                        "m_nsUsrName": "room@chatroom",
+                        "m_nsNickName": "项目群",
+                    }
+                ],
+            },
+        )
+
+    client = WechatExplorerClient(
+        token_loader=lambda: "stored-token",
+        transport=httpx.MockTransport(respond),
+    )
+    try:
+        assert client.query_chatrooms()[0][0] == "room@chatroom"
+    finally:
+        client.close()
+
+
+def test_corrupt_persisted_token_becomes_secret_free_client_error(monkeypatch):
+    monkeypatch.delenv("WECHATEXPLORER_API_TOKEN", raising=False)
+
+    def fail_load():
+        raise CredentialStoreError("private-token ciphertext details")
+
+    with pytest.raises(WechatExplorerError) as error:
+        WechatExplorerClient(token_loader=fail_load)
+
+    assert "重新保存凭据" in str(error.value)
     assert "private-token" not in str(error.value)
 
 

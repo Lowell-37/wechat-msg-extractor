@@ -599,7 +599,7 @@ def _store_connection(
     except Exception as exc:  # noqa: BLE001
         message = str(exc)
         recovery = (
-            "请在 WechatExplorer 的 API Center 开启本机 API 并设置令牌后重试。"
+            "请运行本机安全凭据设置，或临时设置环境变量后重试。"
             if "WECHATEXPLORER_API_TOKEN" in message or "WechatExplorer" in message
             else "确认微信已启动并登录；如自动连接仍失败，可在高级选项中输入密钥。"
         )
