@@ -282,6 +282,20 @@ def test_connection_failure_is_html_escaped(monkeypatch):
     assert "<unsafe>" not in response.text
 
 
+def test_explorer_token_failure_shows_api_specific_recovery(monkeypatch):
+    def fail(key=None):
+        raise RuntimeError("未设置 WECHATEXPLORER_API_TOKEN")
+
+    monkeypatch.setattr(app_module, "connect_wechat", fail)
+    client = TestClient(app_module.app)
+
+    response = client.post("/api/key/extract")
+
+    assert response.status_code == 400
+    assert "请在 WechatExplorer 的 API Center 开启本机 API 并设置令牌后重试。" in response.text
+    assert "可在高级选项中输入密钥" not in response.text
+
+
 def test_manual_key_route_closes_previous_session_database(monkeypatch):
     class PreviousDatabase:
         def __init__(self):

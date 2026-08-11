@@ -557,6 +557,12 @@ def _store_connection(
             },
         )
     except Exception as exc:  # noqa: BLE001
+        message = str(exc)
+        recovery = (
+            "请在 WechatExplorer 的 API Center 开启本机 API 并设置令牌后重试。"
+            if "WECHATEXPLORER_API_TOKEN" in message or "WechatExplorer" in message
+            else "确认微信已启动并登录；如自动连接仍失败，可在高级选项中输入密钥。"
+        )
         response = _connection_template(
             request,
             state,
@@ -565,8 +571,8 @@ def _store_connection(
                 "icon": "!",
                 "heading": "连接失败",
                 "label": "失败原因：",
-                "message": str(exc),
-                "recovery": "确认微信已启动并登录；如自动连接仍失败，可在高级选项中输入密钥。",
+                "message": message,
+                "recovery": recovery,
                 "retry_url": "/api/key/extract",
             },
             status_code=400,
