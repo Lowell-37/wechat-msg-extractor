@@ -14,7 +14,7 @@ class WeChatConfig:
 
 @dataclass
 class ExcelConfig:
-    template_path: str = "D:/assistants/任务安排与情况分析.xlsx"
+    template_path: str = ""
     output_dir: str = "./export/excel"
 
 

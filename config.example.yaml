@@ -6,7 +6,8 @@ wechat:
   explorer_base_url: "http://127.0.0.1:6131/api/v1"
 
 excel:
-  template_path: "D:/assistants/assignment-analysis.xlsx"
+  # 可留空并在连接页手动选择 .xlsx 模板。
+  template_path: ""
   output_dir: "./export/excel"
 
 matching:

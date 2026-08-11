@@ -130,16 +130,15 @@ def build_connection_view_model(
 
     wizard = get_wizard(state)
     template_path = request.app.state.config.excel.template_path
+    template_available = bool(template_path and Path(template_path).is_file())
     return {
         "environment_items": environment["items"],
         "environment_warnings": environment["warnings"],
         "connection_status": connection_status,
-        "next_enabled": wizard.connected,
+        "next_enabled": wizard.connected and template_available,
         "template_name": Path(template_path).name if template_path else "未选择",
         "template_path": template_path,
-        "template_available": bool(
-            template_path and Path(template_path).is_file()
-        ),
+        "template_available": template_available,
     }
 
 

@@ -10,6 +10,7 @@
 - 解析 🚩M.D 任务格式的群聊消息
 - 将任务和情况分析写入 Excel 模板对应 Sheet
 - 支持群聊→Sheet 自动匹配和手动映射
+- 可在连接页手动选择 `.xlsx` 模板，并保存为本机默认模板
 - Web 界面（FastAPI + htmx），使用单页三步向导
 - 返回、刷新和失败重试会保留有效的连接、选择与预览状态
 
@@ -71,7 +72,7 @@ py app.py
 
 ```yaml
 excel:
-  template_path: "D:/assistants/assignment-analysis.xlsx"  # Excel 模板路径
+  template_path: ""                                        # 留空后在连接页选择
   output_dir: "./export/excel"                              # 默认导出目录
 
 matching:
@@ -81,6 +82,9 @@ server:
   host: "127.0.0.1"
   port: 8888
 ```
+
+首次使用或需要更换模板时，在步骤 1 点击“选择 Excel 模板”。服务端会校验
+工作簿并保存本机副本；上传成功后，后续群聊匹配、预览和导出都会使用该模板。
 
 ## 任务消息格式
 

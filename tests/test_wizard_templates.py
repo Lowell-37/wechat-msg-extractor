@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 import app as app_module
 from schemas.wizard import WizardStep
@@ -15,7 +16,7 @@ def reset_in_memory_state():
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
     class Scanner:
         def __init__(self, **kwargs):
             pass
@@ -30,6 +31,14 @@ def client(monkeypatch):
             )
 
     monkeypatch.setattr(app_module, "WeChatScanner", Scanner)
+    template_path = tmp_path / "template.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "项目群"
+    workbook.save(template_path)
+    workbook.close()
+    monkeypatch.setattr(
+        app_module.config.excel, "template_path", str(template_path)
+    )
     return TestClient(app_module.app)
 
 
@@ -68,6 +77,28 @@ def test_connect_step_has_excel_template_picker(client):
     assert 'type="file"' in response.text
     assert 'name="template"' in response.text
     assert 'accept=".xlsx"' in response.text
+
+
+def test_successful_connection_still_requires_an_excel_template(
+    client, monkeypatch
+):
+    class Result:
+        manager = object()
+        database = object()
+        shard_count = 1
+        table_count = 1
+
+    monkeypatch.setattr(app_module.config.excel, "template_path", "")
+    monkeypatch.setattr(app_module, "connect_wechat", lambda key=None: Result())
+
+    response = client.post("/api/key/extract")
+
+    actions = response.text.split('<div class="wizard-actions"', 1)[1].split(
+        "</div>", 1
+    )[0]
+    assert response.status_code == 200
+    assert "未选择" in response.text
+    assert "disabled" in actions
 
 
 def test_runtime_install_path_marks_client_ready_without_version(client, monkeypatch):
