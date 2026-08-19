@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 
 import pytest
@@ -8,10 +9,13 @@ import app as app_module
 from core.task_parser import ParsedTask
 from schemas.catalog import ChatroomOption
 from schemas.wizard import WizardSelection, WizardStep
+from services.credential_store import CredentialStore
 from services.model_settings import (
     ModelProfile,
     ModelSettingsError,
+    ModelSettingsService,
     ModelSettingsStatus,
+    ModelSettingsStore,
     ResolvedModelProfile,
 )
 
@@ -171,6 +175,55 @@ def test_ai_export_snapshots_resolved_model_profile(monkeypatch, preview_client)
     assert jobs[0].model_profile == resolved
 
 
+def test_corrupt_model_credential_disables_preview_and_export(
+    monkeypatch, preview_client, tmp_path
+):
+    async def tester(settings):
+        return None
+
+    service = ModelSettingsService(
+        ModelSettingsStore(tmp_path / "model.json"),
+        CredentialStore(
+            tmp_path / "model-key.dpapi",
+            _ReversingProtector(),
+        ),
+        tester,
+    )
+    asyncio.run(
+        service.save_and_test(
+            provider_name="Local",
+            api_base="http://127.0.0.1:11434",
+            model="qwen",
+            enabled=True,
+            api_key="private-key",
+        )
+    )
+    service.credential_store.path.write_bytes(b"")
+    monkeypatch.setattr(
+        app_module.app.state,
+        "model_settings",
+        service,
+    )
+
+    preview = preview_client.get("/wizard/3")
+    export = preview_client.post(
+        "/api/export",
+        data={
+            "sheet_name": "项目群",
+            "enable_ai": "true",
+            "privacy_acknowledged": "true",
+            "output_path": "result.xlsx",
+            "task_id": "11",
+        },
+    )
+
+    assert preview.status_code == 200
+    assert "AI 模型尚未配置" in preview.text
+    assert "disabled" in preview.text
+    assert export.status_code == 422
+    assert "请先完成模型设置和连接测试" in export.text
+
+
 def test_external_options_require_acknowledgement(preview_client):
     response = preview_client.post(
         "/api/export",
@@ -314,3 +367,11 @@ class _ModelSettingsStub:
         if self._resolved is None:
             raise ModelSettingsError("模型尚未启用并通过连接测试")
         return self._resolved
+
+
+class _ReversingProtector:
+    def protect(self, value):
+        return value[::-1]
+
+    def unprotect(self, value):
+        return value[::-1]

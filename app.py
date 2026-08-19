@@ -1,4 +1,5 @@
 import asyncio as _asyncio
+import ipaddress
 import logging
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from config import AppConfig
 from core.ai_analyzer import create_analyzer as _create_analyzer
@@ -95,6 +97,10 @@ def create_app() -> FastAPI:
     )
 
     application = FastAPI(title="微信聊天提取工具")
+    application.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=_trusted_hosts(config.server.host),
+    )
     application.mount(
         "/static",
         StaticFiles(directory=str(BASE_DIR / "static")),
@@ -129,6 +135,21 @@ def create_app() -> FastAPI:
     application.include_router(model_settings.router)
     application.add_event_handler("shutdown", shutdown_resources)
     return application
+
+
+def _trusted_hosts(configured_host: str) -> list[str]:
+    normalized = configured_host.strip().strip("[]")
+    allowed = {"127.0.0.1", "localhost", "[::1]", "testserver"}
+    if normalized.lower() == "localhost":
+        return sorted(allowed)
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError as exc:
+        raise ValueError("server.host 必须是本机回环地址") from exc
+    if not address.is_loopback:
+        raise ValueError("server.host 必须是本机回环地址")
+    allowed.add(f"[{address}]" if address.version == 6 else str(address))
+    return sorted(allowed)
 
 
 app = create_app()

@@ -5,10 +5,14 @@ from typing import Any
 
 import httpx
 
-from services.model_settings import ModelProfile, ResolvedModelProfile
+from services.model_settings import (
+    ModelProfile,
+    ResolvedModelProfile,
+    SafeModelTesterError,
+)
 
 
-class AIAnalysisError(RuntimeError):
+class AIAnalysisError(SafeModelTesterError):
     """Raised when a model request cannot produce a safe analysis result."""
 
 

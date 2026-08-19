@@ -20,6 +20,7 @@
           hx-post="/settings/model"
           hx-target="#model-settings-form-region"
           hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="settings-grid">
             <label>
                 <span>提供商名称</span>

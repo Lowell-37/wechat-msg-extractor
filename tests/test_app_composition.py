@@ -80,3 +80,26 @@ def test_business_routes_are_owned_by_router_modules():
     assert route_modules["/wizard/{step}/partial"] == "routers.wizard"
     assert route_modules["/api/key/validate"] == "routers.actions"
     assert route_modules["/api/export"] == "routers.actions"
+
+
+def test_configured_loopback_host_is_allowed(monkeypatch):
+    monkeypatch.setattr(app_module.config.server, "host", "127.0.0.2")
+    configured_app = app_module.create_app()
+
+    response = TestClient(
+        configured_app,
+        base_url="http://127.0.0.2",
+    ).get("/wizard/1")
+
+    assert response.status_code == 200
+
+
+def test_non_loopback_server_host_is_rejected_at_startup(monkeypatch):
+    monkeypatch.setattr(
+        app_module.config.server,
+        "host",
+        "0.0.0.0",  # noqa: S104 - verifies unsafe binds are rejected
+    )
+
+    with pytest.raises(ValueError, match="回环地址"):
+        app_module.create_app()

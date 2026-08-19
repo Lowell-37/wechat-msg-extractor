@@ -1,7 +1,10 @@
 """Persistent, secret-safe settings for OpenAI-compatible model services."""
 
+import asyncio
+import hashlib
 import json
 import os
+import secrets
 import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, replace
@@ -23,6 +26,10 @@ class ModelConnectionError(ModelSettingsError):
     """Raised when proposed settings fail an external connection test."""
 
 
+class SafeModelTesterError(RuntimeError):
+    """A connection-test failure whose message is safe to show to users."""
+
+
 @dataclass(frozen=True)
 class ModelProfile:
     provider_name: str = "DeepSeek"
@@ -30,6 +37,7 @@ class ModelProfile:
     model: str = "deepseek-chat"
     enabled: bool = True
     verified: bool = False
+    credential_digest: str = ""
 
 
 @dataclass(frozen=True)
@@ -92,6 +100,7 @@ class ModelSettingsService:
         self.store = store
         self.credential_store = credential_store
         self.tester = tester
+        self._transition_lock = asyncio.Lock()
 
     @classmethod
     def default(
@@ -106,11 +115,29 @@ class ModelSettingsService:
 
     def status(self) -> ModelSettingsStatus:
         profile = self.store.load()
-        has_api_key = self.credential_store.path.is_file()
+        try:
+            api_key = self.credential_store.load()
+        except CredentialStoreError:
+            api_key = None
+        has_api_key = bool(api_key)
+        credential_digest = (
+            _credential_digest(self.credential_store.path)
+            if has_api_key
+            else ""
+        )
         return ModelSettingsStatus(
             profile=profile,
             has_api_key=has_api_key,
-            ready=profile.enabled and profile.verified and has_api_key,
+            ready=(
+                profile.enabled
+                and profile.verified
+                and has_api_key
+                and bool(profile.credential_digest)
+                and secrets.compare_digest(
+                    profile.credential_digest,
+                    credential_digest,
+                )
+            ),
         )
 
     def resolved_profile(self) -> ResolvedModelProfile:
@@ -133,6 +160,23 @@ class ModelSettingsService:
         enabled: bool,
         api_key: str = "",
     ) -> ModelSettingsStatus:
+        async with self._transition_lock:
+            return await self._save_and_test_locked(
+                provider_name,
+                api_base,
+                model,
+                enabled,
+                api_key,
+            )
+
+    async def _save_and_test_locked(
+        self,
+        provider_name: str,
+        api_base: str,
+        model: str,
+        enabled: bool,
+        api_key: str,
+    ) -> ModelSettingsStatus:
         proposed = _validated_profile(
             provider_name,
             api_base,
@@ -144,6 +188,19 @@ class ModelSettingsService:
             return self.status()
 
         replacement_key = api_key.strip()
+        source_profile = self.store.load()
+        source_credential_digest = _credential_revision(
+            self.credential_store.path
+        )
+        if (
+            not replacement_key
+            and self.credential_store.path.is_file()
+            and _authority(source_profile.api_base)
+            != _authority(proposed.api_base)
+        ):
+            raise ModelValidationError(
+                "更改模型服务地址时请填写新的 API Key"
+            )
         try:
             resolved_key = replacement_key or self.credential_store.load()
         except CredentialStoreError as exc:
@@ -153,10 +210,20 @@ class ModelSettingsService:
 
         try:
             await self.tester(ResolvedModelProfile(proposed, resolved_key))
+        except SafeModelTesterError as exc:
+            raise ModelConnectionError(str(exc)) from exc
         except Exception as exc:
             raise ModelConnectionError(
                 "模型连接测试失败，请检查地址、模型和 API Key"
             ) from exc
+
+        if not replacement_key and not _source_is_current(
+            self.store,
+            self.credential_store.path,
+            source_profile,
+            source_credential_digest,
+        ):
+            raise ModelSettingsError("模型设置已更新，请重试")
 
         self._commit_verified(proposed, replacement_key)
         return self.status()
@@ -168,20 +235,37 @@ class ModelSettingsService:
     ) -> None:
         settings_existed = self.store.path.exists()
         previous_profile = self.store.load()
+        credential_existed = self.credential_store.path.exists()
         try:
-            previous_key = self.credential_store.load()
-        except CredentialStoreError as exc:
+            previous_ciphertext = (
+                self.credential_store.path.read_bytes()
+                if credential_existed
+                else b""
+            )
+        except OSError as exc:
             raise ModelSettingsError("无法读取已保存的模型 API Key") from exc
 
         try:
             if replacement_key:
                 self.credential_store.save(replacement_key)
-            self.store.save(replace(proposed, verified=True))
+            credential_digest = _credential_digest(
+                self.credential_store.path
+            )
+            self.store.save(
+                replace(
+                    proposed,
+                    verified=True,
+                    credential_digest=credential_digest,
+                )
+            )
         except Exception as exc:
             try:
                 if replacement_key:
-                    if previous_key:
-                        self.credential_store.save(previous_key)
+                    if credential_existed:
+                        _atomic_write(
+                            self.credential_store.path,
+                            previous_ciphertext,
+                        )
                     else:
                         self.credential_store.delete()
                 if settings_existed:
@@ -233,6 +317,40 @@ def _profile_from_data(data: object) -> ModelProfile:
     if not isinstance(data, dict):
         raise TypeError("model settings must be an object")
     return ModelProfile(**data)
+
+
+def _authority(api_base: str) -> tuple[str, str, int | None]:
+    parsed = urlparse(api_base)
+    default_port = 443 if parsed.scheme.lower() == "https" else 80
+    return (
+        parsed.scheme.lower(),
+        (parsed.hostname or "").lower(),
+        parsed.port or default_port,
+    )
+
+
+def _credential_digest(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ModelSettingsError("无法读取已保存的模型 API Key") from exc
+
+
+def _credential_revision(path: Path) -> str:
+    return _credential_digest(path) if path.is_file() else ""
+
+
+def _source_is_current(
+    store: ModelSettingsStore,
+    credential_path: Path,
+    source_profile: ModelProfile,
+    source_credential_digest: str,
+) -> bool:
+    current_digest = _credential_revision(credential_path)
+    return store.load() == source_profile and secrets.compare_digest(
+        current_digest,
+        source_credential_digest,
+    )
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
