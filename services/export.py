@@ -6,8 +6,10 @@ from datetime import date, datetime
 from typing import Any
 
 from config import AppConfig
+from core.ai_analyzer import AIAnalysisError
 from core.progress import ProgressEvent, progress_hub
 from core.task_parser import ParsedTask
+from services.model_settings import ResolvedModelProfile
 
 logger = logging.getLogger("app")
 
@@ -45,6 +47,7 @@ class ExportJob:
     analysis_by_date: tuple[tuple[str, tuple[str, ...]], ...]
     enable_ai: bool
     enable_voice: bool
+    model_profile: ResolvedModelProfile | None = None
 
 
 def configure(
@@ -77,6 +80,7 @@ def create_export_job(
     analysis_by_date: dict[str, list[str]],
     enable_ai: bool = False,
     enable_voice: bool = False,
+    model_profile: ResolvedModelProfile | None = None,
 ) -> ExportJob:
     """Create an immutable export snapshot from mutable session inputs."""
     return ExportJob(
@@ -93,6 +97,7 @@ def create_export_job(
         analysis_by_date=_snapshot_analysis(analysis_by_date),
         enable_ai=enable_ai,
         enable_voice=enable_voice,
+        model_profile=model_profile,
     )
 
 
@@ -226,9 +231,11 @@ async def run_export_job(job: ExportJob) -> None:
                     ),
                 )
 
-        analyzer = None
-        if job.enable_ai and config.ai.enabled and config.ai.api_key:
-            analyzer = analyzer_factory(config.ai)
+        analyzer = (
+            analyzer_factory(job.model_profile)
+            if job.enable_ai and job.model_profile is not None
+            else None
+        )
 
         await progress_hub.emit(
             job.job_id,
@@ -253,7 +260,26 @@ async def run_export_job(job: ExportJob) -> None:
                         progress=progress,
                     ),
                 )
-                analysis = await analyzer.analyze(task.tasks, context, date_key)
+                try:
+                    analysis = await analyzer.analyze(
+                        list(task.tasks), context, date_key
+                    )
+                except AIAnalysisError as exc:
+                    logger.warning(
+                        "AI analysis failed for provider=%s model=%s date=%s",
+                        job.model_profile.profile.provider_name,
+                        job.model_profile.profile.model,
+                        date_key,
+                    )
+                    await progress_hub.emit(
+                        job.job_id,
+                        ProgressEvent(
+                            stage="warning",
+                            message=f"AI 分析失败，已写入失败说明：{date_key}",
+                            progress=progress,
+                        ),
+                    )
+                    analysis = f"[AI 分析失败] {exc}"
             else:
                 analysis = "\n".join(context) if context else ""
             writer.add_task(job.sheet_name, task, analysis)

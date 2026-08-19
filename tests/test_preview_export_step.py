@@ -8,6 +8,12 @@ import app as app_module
 from core.task_parser import ParsedTask
 from schemas.catalog import ChatroomOption
 from schemas.wizard import WizardSelection, WizardStep
+from services.model_settings import (
+    ModelProfile,
+    ModelSettingsError,
+    ModelSettingsStatus,
+    ResolvedModelProfile,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +45,11 @@ def preview_client(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module.config.ai, "provider", "deepseek")
     monkeypatch.setattr(app_module.config.voice, "enabled", True)
     monkeypatch.setattr(app_module.config.voice, "transcriber", "openai")
+    monkeypatch.setattr(
+        app_module.app.state,
+        "model_settings",
+        _ModelSettingsStub(ready=False),
+    )
 
     client = TestClient(app_module.app)
     client.get("/")
@@ -88,8 +99,76 @@ def test_preview_groups_checked_tasks_with_stable_ids_and_summary(preview_client
     assert response.text.count(">2026-08-03</h3>") == 1
     assert "checked" in response.text
     assert "外部处理选项" in response.text
-    assert "deepseek" in response.text
+    assert "AI 模型尚未配置" in response.text
+    assert 'href="/settings/model"' in response.text
     assert "openai" in response.text
+
+
+def test_preview_disables_ai_until_model_is_verified(preview_client):
+    response = preview_client.get("/wizard/3")
+
+    assert response.status_code == 200
+    assert 'name="enable_ai" value="true"' in response.text
+    assert "disabled" in response.text
+    assert "请先完成模型设置和连接测试" in response.text
+
+
+def test_ai_export_requires_ready_model_even_after_privacy_acknowledgement(
+    monkeypatch, preview_client
+):
+    jobs = []
+    monkeypatch.setattr(app_module, "_start_export_job", jobs.append)
+
+    response = preview_client.post(
+        "/api/export",
+        data={
+            "sheet_name": "项目群",
+            "enable_ai": "true",
+            "privacy_acknowledged": "true",
+            "output_path": "result.xlsx",
+            "task_id": "11",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "请先完成模型设置和连接测试" in response.text
+    assert 'name="enable_ai" value="true"' in response.text
+    assert 'name="privacy_acknowledged" value="true"' in response.text
+    assert jobs == []
+
+
+def test_ai_export_snapshots_resolved_model_profile(monkeypatch, preview_client):
+    jobs = []
+    resolved = ResolvedModelProfile(
+        ModelProfile(
+            provider_name="兼容服务",
+            api_base="https://model.example.test",
+            model="chat-v1",
+            enabled=True,
+            verified=True,
+        ),
+        "secret-at-schedule-time",
+    )
+    monkeypatch.setattr(
+        app_module.app.state,
+        "model_settings",
+        _ModelSettingsStub(ready=True, resolved=resolved),
+    )
+    monkeypatch.setattr(app_module, "_start_export_job", jobs.append)
+
+    response = preview_client.post(
+        "/api/export",
+        data={
+            "sheet_name": "项目群",
+            "enable_ai": "true",
+            "privacy_acknowledged": "true",
+            "output_path": "result.xlsx",
+            "task_id": "11",
+        },
+    )
+
+    assert response.status_code == 202
+    assert jobs[0].model_profile == resolved
 
 
 def test_external_options_require_acknowledgement(preview_client):
@@ -217,3 +296,21 @@ def test_export_progress_fragment_is_driven_by_external_script(
 class _RunningTask:
     def done(self):
         return False
+
+
+class _ModelSettingsStub:
+    def __init__(self, *, ready, resolved=None):
+        self._status = ModelSettingsStatus(
+            profile=(resolved.profile if resolved else ModelProfile()),
+            has_api_key=ready,
+            ready=ready,
+        )
+        self._resolved = resolved
+
+    def status(self):
+        return self._status
+
+    def resolved_profile(self):
+        if self._resolved is None:
+            raise ModelSettingsError("模型尚未启用并通过连接测试")
+        return self._resolved

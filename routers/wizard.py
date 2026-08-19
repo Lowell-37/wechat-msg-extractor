@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from schemas.wizard import WizardStep
 from services.catalog import find_catalog_option, load_catalog
+from services.model_settings import ModelSettingsError
 from services.session import get_session
 from services.wizard import (
     get_wizard,
@@ -223,6 +224,11 @@ def build_preview_view_model(
             }
         )
     config = request.app.state.config
+    try:
+        model_status = request.app.state.model_settings.status()
+    except ModelSettingsError:
+        model_status = None
+    ai_ready = bool(model_status and model_status.ready)
     return {
         "group_name": selection.group_name,
         "sheet_name": selection.sheet_name,
@@ -241,7 +247,13 @@ def build_preview_view_model(
         "enable_ai": wizard.enable_ai,
         "enable_voice": wizard.enable_voice,
         "privacy_acknowledged": wizard.privacy_acknowledged,
-        "ai_provider": config.ai.provider,
+        "ai_ready": ai_ready,
+        "ai_status": "已验证" if ai_ready else "尚未通过连接测试",
+        "ai_provider": (
+            model_status.profile.provider_name if model_status else ""
+        ),
+        "ai_model": model_status.profile.model if model_status else "",
+        "model_settings_url": "/settings/model",
         "voice_provider": config.voice.transcriber,
     }
 

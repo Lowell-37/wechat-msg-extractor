@@ -25,6 +25,7 @@ from routers.wizard import (
 from schemas.wizard import WizardStep
 from services import export as export_service
 from services.catalog import filter_catalog, find_catalog_option, load_catalog
+from services.model_settings import ModelSettingsError
 from services.preview import build_legacy_preview, build_preview
 from services.session import dispose_session, get_session, new_session_state, session_state
 from services.template_store import TemplateUploadError, activate_template
@@ -377,6 +378,18 @@ async def export(
             422,
             retry_values,
         )
+    model_profile = None
+    if enable_ai:
+        try:
+            model_profile = request.app.state.model_settings.resolved_profile()
+        except ModelSettingsError:
+            return _export_error(
+                request,
+                session_id,
+                "请先完成模型设置和连接测试",
+                422,
+                retry_values,
+            )
     if not parsed_tasks:
         return _export_error(
             request, session_id, "没有可导出的任务", 400, retry_values
@@ -480,6 +493,7 @@ async def export(
         analysis_by_date=state.get("analysis_by_date", {}),
         enable_ai=enable_ai,
         enable_voice=enable_voice,
+        model_profile=model_profile,
     )
     try:
         request.app.state.start_export_job(job)

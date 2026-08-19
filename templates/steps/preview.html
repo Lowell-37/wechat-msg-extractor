@@ -48,10 +48,19 @@
                 <p>默认仅在本机处理。以下选项均为关闭状态，启用后需要单独确认。</p>
                 <label class="option-check">
                     <input type="checkbox" name="enable_ai" value="true"
-                           {% if enable_ai %}checked{% endif %}>
-                    使用 AI 分析（提供商：{{ ai_provider }}）
+                           {% if enable_ai and ai_ready %}checked{% endif %}
+                           {% if not ai_ready %}disabled{% endif %}>
+                    {% if ai_ready %}
+                    使用 AI 分析（{{ ai_provider }} / {{ ai_model }}）
+                    {% else %}
+                    AI 模型尚未配置
+                    {% endif %}
                 </label>
+                {% if ai_ready %}
                 <p class="privacy-detail">会发送所选任务文本和同日消息上下文；内容将离开本机，处理时间、费用和服务方数据政策可能受到影响。</p>
+                {% else %}
+                <p class="privacy-detail">请先完成模型设置和连接测试。<a href="{{ model_settings_url }}">打开模型设置</a></p>
+                {% endif %}
                 <label class="option-check">
                     <input type="checkbox" name="enable_voice" value="true"
                            {% if enable_voice %}checked{% endif %}>
