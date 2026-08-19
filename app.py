@@ -15,9 +15,10 @@ from core.progress import progress_hub
 from core.scanner import WeChatScanner as _WeChatScanner
 from core.task_parser import TaskParser as _TaskParser
 from core.voice import VoiceTranscriber as _VoiceTranscriber
-from routers import actions, wizard
+from routers import actions, model_settings, wizard
 from services import export as export_service
 from services import session as session_service
+from services.model_settings import ModelSettingsService
 
 BASE_DIR = Path(__file__).parent
 logger = logging.getLogger(__name__)
@@ -61,6 +62,13 @@ _get_messages = actions._get_messages
 
 def create_app() -> FastAPI:
     """Compose the FastAPI application from routers and lifecycle services."""
+    async def test_model_connection(settings):
+        analyzer = globals()["create_analyzer"](settings)
+        await analyzer.test_connection()
+
+    model_settings_service = ModelSettingsService.default(
+        test_model_connection
+    )
     export_service.configure(
         config_provider=lambda: config,
         writer_factory=lambda path: globals()["ExcelWriter"](path),
@@ -115,8 +123,10 @@ def create_app() -> FastAPI:
     application.state.start_export_job = (
         lambda job: globals()["_start_export_job"](job)
     )
+    application.state.model_settings = model_settings_service
     application.include_router(wizard.router)
     application.include_router(actions.router)
+    application.include_router(model_settings.router)
     application.add_event_handler("shutdown", shutdown_resources)
     return application
 

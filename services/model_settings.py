@@ -15,6 +15,14 @@ class ModelSettingsError(RuntimeError):
     """Raised when model settings cannot be validated or persisted safely."""
 
 
+class ModelValidationError(ModelSettingsError):
+    """Raised when submitted non-secret model settings are invalid."""
+
+
+class ModelConnectionError(ModelSettingsError):
+    """Raised when proposed settings fail an external connection test."""
+
+
 @dataclass(frozen=True)
 class ModelProfile:
     provider_name: str = "DeepSeek"
@@ -141,12 +149,14 @@ class ModelSettingsService:
         except CredentialStoreError as exc:
             raise ModelSettingsError("无法读取已保存的模型 API Key") from exc
         if not resolved_key:
-            raise ModelSettingsError("请填写 API Key")
+            raise ModelValidationError("请填写 API Key")
 
         try:
             await self.tester(ResolvedModelProfile(proposed, resolved_key))
         except Exception as exc:
-            raise ModelSettingsError("模型连接测试失败，请检查地址、模型和 API Key") from exc
+            raise ModelConnectionError(
+                "模型连接测试失败，请检查地址、模型和 API Key"
+            ) from exc
 
         self._commit_verified(proposed, replacement_key)
         return self.status()
@@ -193,9 +203,9 @@ def _validated_profile(
     normalized_model = model.strip()
     normalized_base = api_base.strip().rstrip("/")
     if not normalized_provider:
-        raise ModelSettingsError("提供商名称不能为空")
+        raise ModelValidationError("提供商名称不能为空")
     if not normalized_model:
-        raise ModelSettingsError("模型名称不能为空")
+        raise ModelValidationError("模型名称不能为空")
 
     parsed = urlparse(normalized_base)
     is_loopback_http = parsed.scheme == "http" and parsed.hostname in {
@@ -204,11 +214,11 @@ def _validated_profile(
         "::1",
     }
     if parsed.scheme != "https" and not is_loopback_http:
-        raise ModelSettingsError("远程模型地址必须使用 HTTPS")
+        raise ModelValidationError("远程模型地址必须使用 HTTPS")
     if not parsed.hostname or parsed.username or parsed.password:
-        raise ModelSettingsError("模型 API 地址格式无效")
+        raise ModelValidationError("模型 API 地址格式无效")
     if parsed.query or parsed.fragment:
-        raise ModelSettingsError("模型 API 地址不能包含查询参数或片段")
+        raise ModelValidationError("模型 API 地址不能包含查询参数或片段")
 
     return ModelProfile(
         provider_name=normalized_provider,

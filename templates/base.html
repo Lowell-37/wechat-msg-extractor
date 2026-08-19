@@ -21,12 +21,17 @@
                         <small>本地消息整理与 Excel 导出</small>
                     </span>
                 </a>
-                <p class="local-status">
-                    <span aria-hidden="true">●</span>
-                    <span>默认本机处理</span>
-                </p>
+                <div class="header-actions">
+                    <p class="local-status">
+                        <span aria-hidden="true">●</span>
+                        <span>默认本机处理</span>
+                    </p>
+                    <a class="header-link" href="/settings/model">模型设置</a>
+                </div>
             </div>
+            {% block stepper %}
             {% include "components/stepper.html" %}
+            {% endblock %}
         </header>
 
         <main class="wizard-main" id="main-content">

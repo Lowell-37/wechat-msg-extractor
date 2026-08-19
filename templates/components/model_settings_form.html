@@ -1,0 +1,59 @@
+<div id="model-settings-form-region">
+    {% if message %}
+    <div class="settings-notice settings-notice--{{ tone }}" role="status">
+        {{ message }}
+    </div>
+    {% endif %}
+
+    <div class="settings-status" aria-label="当前模型状态">
+        <div>
+            <span>配置状态</span>
+            <strong>{{ state_label }}</strong>
+        </div>
+        <div>
+            <span>API Key</span>
+            <strong>{% if has_api_key %}API Key 已配置{% else %}未配置 API Key{% endif %}</strong>
+        </div>
+    </div>
+
+    <form class="model-settings-form"
+          hx-post="/settings/model"
+          hx-target="#model-settings-form-region"
+          hx-swap="outerHTML">
+        <div class="settings-grid">
+            <label>
+                <span>提供商名称</span>
+                <input class="input-text" name="provider_name" value="{{ provider_name }}" required>
+            </label>
+            <label>
+                <span>模型名称</span>
+                <input class="input-text" name="model" value="{{ model }}" required>
+            </label>
+            <label class="settings-grid__wide">
+                <span>API Base URL</span>
+                <input class="input-text" type="url" name="api_base" value="{{ api_base }}" required>
+                <small>远程服务必须使用 HTTPS；本机模型可使用 localhost、127.0.0.1 或 ::1 的 HTTP 地址。</small>
+            </label>
+            <label class="settings-grid__wide">
+                <span>API Key</span>
+                <input class="input-text"
+                       type="password"
+                       name="api_key"
+                       value=""
+                       autocomplete="new-password"
+                       placeholder="{% if has_api_key %}留空以继续使用已保存的 Key{% else %}输入 API Key{% endif %}">
+                <small>保存后不会回显；填写新值会替换当前加密凭据。</small>
+            </label>
+        </div>
+
+        <label class="settings-enabled">
+            <input type="checkbox" name="enabled" value="true" {% if enabled %}checked{% endif %}>
+            <span>启用 AI 分析</span>
+        </label>
+
+        <div class="settings-actions">
+            <a class="btn btn-secondary" href="/wizard/1">返回提取流程</a>
+            <button class="btn btn-primary" type="submit">保存并测试</button>
+        </div>
+    </form>
+</div>
