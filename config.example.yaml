@@ -25,10 +25,13 @@ media:
   export_dir: "./export"
 
 server:
+  # 为保护本机凭据，服务仅允许绑定回环地址。
   host: "127.0.0.1"
   port: 8888
 
 ai:
+  # 旧版配置迁移参考；正常使用请在“模型设置”页面保存并测试。
+  # API Key 由本机 DPAPI 凭据存储管理，不要写入 config.yaml。
   provider: "deepseek"
   api_key: ""
   api_base: "https://api.deepseek.com"

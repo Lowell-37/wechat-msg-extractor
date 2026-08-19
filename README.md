@@ -11,6 +11,7 @@
 - 将任务和情况分析写入 Excel 模板对应 Sheet
 - 支持群聊→Sheet 自动匹配和手动映射
 - 可在连接页手动选择 `.xlsx` 模板，并保存为本机默认模板
+- 支持通用 OpenAI Chat Completions 兼容模型，并在页面中安全配置和测试
 - Web 界面（FastAPI + htmx），使用单页三步向导
 - 返回、刷新和失败重试会保留有效的连接、选择与预览状态
 
@@ -43,7 +44,9 @@ py app.py
 Supported Python versions are `>=3.11,<3.14` (CI uses Python 3.13; the workflow
 uses `python`, not the Windows `py` launcher, to select that interpreter). The
 default server address is local-only: `http://127.0.0.1:8888`; it does not
-expose the application to the network.
+expose the application to the network. 为保护本机 DPAPI 凭据，`server.host`
+只接受 `localhost`、IPv4 `127.0.0.0/8` 或 IPv6 `::1` 回环地址；应用会拒绝
+`0.0.0.0` 或局域网地址。
 
 ### 新版微信兼容性
 
@@ -76,6 +79,23 @@ py app.py
 启用 AI 分析或语音转写时，相关消息内容会发送到你配置的外部服务；仅使用
 本地解析和 Excel 导出时，数据默认留在本机。
 
+### AI 模型设置
+
+点击页面顶部的“模型设置”，按以下流程启用 AI 分析：
+
+1. 填写提供商名称、API Base URL、模型名称和 API Key。
+2. 点击“保存并测试”，等待页面显示“连接测试通过”。
+3. 返回预览页，在“外部处理选项”中启用 AI 分析并确认隐私提示。
+
+模型服务需要兼容 OpenAI 的 `/v1/chat/completions` 接口。远程地址必须使用
+HTTPS；Ollama、LM Studio 等本机服务可使用 `localhost`、`127.0.0.1` 或
+`::1` 的 HTTP 地址。API Key 不会回显到浏览器或写入 YAML，而是作为 Windows
+机器级 DPAPI 密文保存在 Git 忽略的 `local/secrets/` 中。填写新 Key 并通过
+连接测试后才会替换旧 Key；留空则继续使用已保存的 Key。
+
+只有已启用且通过连接测试的模型才能在预览页勾选。导出过程中若某日 AI 请求
+失败，工作簿会写入 `[AI 分析失败]` 说明并继续导出，避免将失败误认为成功。
+
 ## 配置
 
 编辑 `config.yaml`：
@@ -92,6 +112,9 @@ server:
   host: "127.0.0.1"
   port: 8888
 ```
+
+`config.example.yaml` 中的 `ai` 字段仅作为旧配置迁移和默认值参考。正常使用时
+请通过“模型设置”页面管理模型，不要在 `config.yaml` 中保存 API Key。
 
 首次使用或需要更换模板时，在步骤 1 点击“选择 Excel 模板”。服务端会校验
 工作簿并保存本机副本；上传成功后，后续群聊匹配、预览和导出都会使用该模板。
