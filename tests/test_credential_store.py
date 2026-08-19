@@ -100,3 +100,23 @@ def test_default_store_path_is_repository_local_and_not_plaintext():
     assert store.path.parent.name == "secrets"
     assert store.path.parent.parent.name == "local"
     assert Path("config.yaml") != store.path
+
+
+def test_model_api_key_store_uses_separate_repository_local_blob():
+    store = CredentialStore.model_api_key()
+
+    assert store.path.name == "model_api_key.dpapi"
+    assert store.path.parent.name == "secrets"
+    assert store.path != CredentialStore.default().path
+
+
+def test_delete_removes_only_the_selected_credential(tmp_path):
+    selected = CredentialStore(tmp_path / "selected.dpapi", ReversingProtector())
+    other = CredentialStore(tmp_path / "other.dpapi", ReversingProtector())
+    selected.save("selected-token")
+    other.save("other-token")
+
+    selected.delete()
+
+    assert selected.load() is None
+    assert other.load() == "other-token"

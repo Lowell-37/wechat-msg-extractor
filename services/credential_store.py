@@ -56,6 +56,11 @@ class CredentialStore:
             / "wechat_explorer_token.dpapi"
         )
 
+    @classmethod
+    def model_api_key(cls) -> "CredentialStore":
+        base_dir = Path(__file__).resolve().parents[1]
+        return cls(base_dir / "local" / "secrets" / "model_api_key.dpapi")
+
     def save(self, token: str) -> None:
         normalized = token.strip()
         if not normalized:
@@ -79,6 +84,12 @@ class CredentialStore:
             raise CredentialStoreError(
                 "无法解密已保存的 WechatExplorer Token；请重新保存凭据"
             ) from exc
+
+    def delete(self) -> None:
+        try:
+            self.path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise CredentialStoreError("无法删除已保存的加密凭据") from exc
 
 
 def load_persisted_token() -> str | None:
